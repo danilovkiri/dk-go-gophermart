@@ -8,4 +8,5 @@ type Secretary interface {
 	Encode(data string) string
 	Decode(msg string) (string, error)
 	NewCookie() (*http.Cookie, string)
+	GetCookieForUser(userID string) *http.Cookie
 }

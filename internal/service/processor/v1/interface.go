@@ -8,4 +8,5 @@ import (
 
 type Processor interface {
 	AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials) (*http.Cookie, error)
+	LoginUser(ctx context.Context, credentials modeluser.ModelCredentials) (*http.Cookie, error)
 }

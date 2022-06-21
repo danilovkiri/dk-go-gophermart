@@ -2,48 +2,50 @@ package inpsql
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"errors"
+	"fmt"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
+	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelstorage"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeluser"
 	storageErrors "github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/errors"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"log"
+	"github.com/rs/zerolog"
 	"sync"
 	"time"
 )
 
 type Storage struct {
-	mu       sync.Mutex
-	Cfg      *config.StorageConfig
-	DB       *sql.DB
-	localLog *log.Logger
+	mu  sync.Mutex
+	Cfg *config.StorageConfig
+	DB  *sql.DB
+	log *zerolog.Logger
 }
 
-func InitStorage(ctx context.Context, cfg *config.StorageConfig, minorlog *log.Logger) (*Storage, error) {
+func InitStorage(ctx context.Context, cfg *config.StorageConfig, log *zerolog.Logger) (*Storage, error) {
 	db, err := sql.Open("pgx", cfg.DatabaseDSN)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("")
 	}
 	// initialize a Storage
 	st := Storage{
-		Cfg:      cfg,
-		DB:       db,
-		localLog: minorlog,
+		Cfg: cfg,
+		DB:  db,
+		log: log,
 	}
 	err = st.createTables(ctx)
 	if err != nil {
-		log.Println(err)
-		st.localLog.Fatal(err)
+		log.Fatal().Err(err).Msg("")
 	}
-	log.Println("PSQL DB connection was established")
-	st.localLog.Println("PSQL DB connection was established")
-
+	log.Info().Msg("PSQL DB connection was established")
 	return &st, nil
 }
 
-func (s *Storage) AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials, userID string) (err error) {
+func (s *Storage) AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials, userID string) error {
 	newUserStmt, err := s.DB.PrepareContext(ctx, "INSERT INTO users (user_id, login, password, registered_at) VALUES ($1, $2, $3, $4)")
 	if err != nil {
 		return &storageErrors.StatementPSQLError{Err: err}
@@ -82,17 +84,59 @@ func (s *Storage) AddNewUser(ctx context.Context, credentials modeluser.ModelCre
 
 	select {
 	case <-ctx.Done():
-		log.Println("Adding new user:", ctx.Err())
-		s.localLog.Println("Adding new user:", ctx.Err())
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprintf("adding new user failed for %s", credentials.Login))
 		return &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
 	case methodErr := <-chanEr:
-		log.Println("Adding new user:", methodErr.Error())
-		s.localLog.Println("Adding new user:", methodErr.Error())
+		s.log.Error().Err(methodErr).Msg(fmt.Sprintf("adding new user failed for %s", credentials.Login))
 		return methodErr
 	case <-chanOk:
-		log.Println("Adding new user: done for", credentials.Login)
-		s.localLog.Println("Adding new user: done for", credentials.Login)
+		s.log.Info().Msg(fmt.Sprintf("adding new user done for %s", credentials.Login))
 		return nil
+	}
+}
+
+func (s *Storage) CheckUser(ctx context.Context, credentials modeluser.ModelCredentials) (string, error) {
+	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM users WHERE login = $1")
+	if err != nil {
+		return "", &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer selectStmt.Close()
+	chanOk := make(chan string)
+	chanEr := make(chan error)
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var queryOutput modelstorage.UsersStorageEntry
+		err := selectStmt.QueryRowContext(ctx, credentials.Login).Scan(&queryOutput.ID, &queryOutput.UserID, &queryOutput.Login, &queryOutput.Password, &queryOutput.RegisteredAt)
+		if err != nil {
+			switch {
+			case errors.Is(err, sql.ErrNoRows):
+				chanEr <- &storageErrors.NotFoundError{Err: err}
+				return
+			default:
+				chanEr <- err
+				return
+			}
+		}
+		passwordHash := sha256.Sum256([]byte(credentials.Password))
+		expectedPasswordHash := sha256.Sum256([]byte(queryOutput.Password))
+		passwordMatch := subtle.ConstantTimeCompare(passwordHash[:], expectedPasswordHash[:]) == 1
+		if !passwordMatch {
+			chanEr <- &storageErrors.NotFoundError{Err: nil}
+		}
+		chanOk <- queryOutput.UserID
+	}()
+
+	select {
+	case <-ctx.Done():
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("user authentication failed"))
+		return "", &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
+	case methodErr := <-chanEr:
+		s.log.Error().Err(methodErr).Msg(fmt.Sprint("user authentication failed"))
+		return "", methodErr
+	case userID := <-chanOk:
+		s.log.Info().Msg(fmt.Sprint("user authentication done"))
+		return userID, nil
 	}
 }
 

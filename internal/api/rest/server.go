@@ -10,15 +10,15 @@ import (
 	"github.com/danilovkiri/dk-go-gophermart/internal/service/secretary/v1/secretary"
 	"github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/inpsql"
 	"github.com/go-chi/chi"
-	"log"
+	"github.com/rs/zerolog"
 	"net/http"
 	"time"
 )
 
 // InitServer returns a http.Server object ready to be listening and serving .
-func InitServer(ctx context.Context, cfg *config.Config, minorlog *log.Logger) (server *http.Server, err error) {
+func InitServer(ctx context.Context, cfg *config.Config, log *zerolog.Logger) (server *http.Server, err error) {
 	// initialize storage
-	storage, err := inpsql.InitStorage(ctx, cfg.StorageConfig, minorlog)
+	storage, err := inpsql.InitStorage(ctx, cfg.StorageConfig, log)
 
 	//initialize secretary
 	secretaryService, err := secretary.NewSecretaryService(cfg.SecretConfig)
@@ -33,12 +33,12 @@ func InitServer(ctx context.Context, cfg *config.Config, minorlog *log.Logger) (
 	}
 
 	// initialize main service
-	mainservice, err := processor.InitService(storage, secretaryService)
+	mainService, err := processor.InitService(storage, secretaryService)
 	if err != nil {
 		return nil, err
 	}
 
-	urlHandler, err := handlers.InitHandlers(mainservice, cfg.ServerConfig, minorlog)
+	urlHandler, err := handlers.InitHandlers(mainService, cfg.ServerConfig, log)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func InitServer(ctx context.Context, cfg *config.Config, minorlog *log.Logger) (
 	r.Use(middleware.DecompressHandle)
 	loginGroup := r.Group(nil)
 	loginGroup.Post("/api/user/register", urlHandler.HandleRegister())
-	loginGroup.Post("/api/user/login", nil)
+	loginGroup.Post("/api/user/login", urlHandler.HandleLogin())
 	mainGroup := r.Group(nil)
 	mainGroup.Use(cookieHandler.CookieHandle)
 	mainGroup.Post("/api/user/orders", nil)

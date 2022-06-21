@@ -6,7 +6,8 @@ import (
 )
 
 type Register interface {
-	AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials, userID string) (err error)
+	AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials, userID string) error
+	CheckUser(ctx context.Context, credentials modeluser.ModelCredentials) (string, error)
 }
 
 type Storage interface {

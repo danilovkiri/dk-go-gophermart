@@ -30,9 +30,26 @@ func InitService(st storage.Storage, sec secretary.Secretary) (*Processor, error
 
 func (proc *Processor) AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials) (*http.Cookie, error) {
 	newCookie, userID := proc.secretary.NewCookie()
-	err := proc.storage.AddNewUser(ctx, credentials, userID)
+	cipheredCredentials := modeluser.ModelCredentials{
+		Login:    proc.secretary.Encode(credentials.Login),
+		Password: proc.secretary.Encode(credentials.Password),
+	}
+	err := proc.storage.AddNewUser(ctx, cipheredCredentials, userID)
 	if err != nil {
 		return nil, err
 	}
 	return newCookie, nil
+}
+
+func (proc *Processor) LoginUser(ctx context.Context, credentials modeluser.ModelCredentials) (*http.Cookie, error) {
+	cipheredCredentials := modeluser.ModelCredentials{
+		Login:    proc.secretary.Encode(credentials.Login),
+		Password: proc.secretary.Encode(credentials.Password),
+	}
+	userID, err := proc.storage.CheckUser(ctx, cipheredCredentials)
+	if err != nil {
+		return nil, err
+	}
+	userCookie := proc.secretary.GetCookieForUser(userID)
+	return userCookie, nil
 }

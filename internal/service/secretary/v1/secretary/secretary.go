@@ -60,10 +60,24 @@ func (s *Secretary) NewCookie() (*http.Cookie, string) {
 	userID := uuid.New().String()
 	token := s.Encode(userID)
 	newCookie := &http.Cookie{
-		Name:    "userID",
-		Value:   token,
-		Path:    "/",
-		Expires: time.Now().Add(1 * time.Minute),
+		Name:  "userID",
+		Value: token,
+		Path:  "/",
+		//Expires: time.Now().Add(10 * time.Minute),
+		Expires: time.Now().Add(30 * time.Second),
 	}
 	return newCookie, userID
+}
+
+// GetCookieForUser generates an encoded cookie for a userID.
+func (s *Secretary) GetCookieForUser(userID string) *http.Cookie {
+	token := s.Encode(userID)
+	userCookie := &http.Cookie{
+		Name:  "userID",
+		Value: token,
+		Path:  "/",
+		//Expires: time.Now().Add(10 * time.Minute),
+		Expires: time.Now().Add(30 * time.Second),
+	}
+	return userCookie
 }

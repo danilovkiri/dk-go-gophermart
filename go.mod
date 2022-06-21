@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgconn v1.12.1
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/jackc/pgx/v4 v4.16.1
+	github.com/rs/zerolog v1.15.0
 )
 
 require (

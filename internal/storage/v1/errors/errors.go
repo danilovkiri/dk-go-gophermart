@@ -18,6 +18,9 @@ type (
 	ContextTimeoutExceededError struct {
 		Err error
 	}
+	NotFoundError struct {
+		Err error
+	}
 )
 
 func (e *StatementPSQLError) Error() string {
@@ -34,4 +37,8 @@ func (e *ExecutionPSQLError) Error() string {
 
 func (e *ContextTimeoutExceededError) Error() string {
 	return fmt.Sprintf("%s: context timeout exceeded", e.Err.Error())
+}
+
+func (e *NotFoundError) Error() string {
+	return fmt.Sprint("not found in storage")
 }
