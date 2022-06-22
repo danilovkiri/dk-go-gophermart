@@ -11,4 +11,5 @@ type Processor interface {
 	AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials) (*http.Cookie, error)
 	LoginUser(ctx context.Context, credentials modeluser.ModelCredentials) (*http.Cookie, error)
 	GetBalance(ctx context.Context, cipheredUserID string) (*modeldto.Balance, error)
+	GetWithdrawals(ctx context.Context, cipheredUserID string) ([]modeldto.Withdrawal, error)
 }

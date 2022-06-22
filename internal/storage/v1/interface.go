@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelstorage"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeluser"
 )
 
@@ -15,7 +16,12 @@ type CheckBalance interface {
 	GetWithdrawnAmount(ctx context.Context, userID string) (float64, error)
 }
 
+type CheckWithdrawals interface {
+	GetWithdrawals(ctx context.Context, userID string) ([]modelstorage.WithdrawalStorageEntry, error)
+}
+
 type Storage interface {
 	RegisterLogin
 	CheckBalance
+	CheckWithdrawals
 }

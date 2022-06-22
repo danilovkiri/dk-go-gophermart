@@ -8,6 +8,8 @@ import (
 	"github.com/danilovkiri/dk-go-gophermart/internal/service/secretary/v1"
 	"github.com/danilovkiri/dk-go-gophermart/internal/storage/v1"
 	"net/http"
+	"sort"
+	"time"
 )
 
 type Processor struct {
@@ -73,4 +75,30 @@ func (proc *Processor) GetBalance(ctx context.Context, cipheredUserID string) (*
 		WithdrawnAmount: withdrawnAmount,
 	}
 	return &balance, nil
+}
+
+func (proc *Processor) GetWithdrawals(ctx context.Context, cipheredUserID string) ([]modeldto.Withdrawal, error) {
+	userID, err := proc.secretary.Decode(cipheredUserID)
+	if err != nil {
+		return nil, err
+	}
+	withdrawals, err := proc.storage.GetWithdrawals(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	var responseWithdrawals []modeldto.Withdrawal
+	for _, withdrawal := range withdrawals {
+		responseWithdrawal := modeldto.Withdrawal{
+			OrderNumber:     withdrawal.OrderNumber,
+			WithdrawnAmount: withdrawal.Amount,
+			ProcessedAt:     withdrawal.ProcessedAt,
+		}
+		responseWithdrawals = append(responseWithdrawals, responseWithdrawal)
+	}
+	sort.Slice(responseWithdrawals, func(i, j int) bool {
+		time1, _ := time.Parse(time.RFC3339, responseWithdrawals[i].ProcessedAt)
+		time2, _ := time.Parse(time.RFC3339, responseWithdrawals[j].ProcessedAt)
+		return time1.Before(time2)
+	})
+	return responseWithdrawals, nil
 }

@@ -228,6 +228,52 @@ func (s *Storage) GetWithdrawnAmount(ctx context.Context, userID string) (float6
 	}
 }
 
+func (s *Storage) GetWithdrawals(ctx context.Context, userID string) ([]modelstorage.WithdrawalStorageEntry, error) {
+	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM withdrawals WHERE user_id = $1")
+	if err != nil {
+		return nil, &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer selectStmt.Close()
+	chanOk := make(chan []modelstorage.WithdrawalStorageEntry)
+	chanEr := make(chan error)
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		rows, err := selectStmt.QueryContext(ctx, userID)
+		if err != nil {
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+			return
+		}
+		defer rows.Close()
+		var queryOutput []modelstorage.WithdrawalStorageEntry
+		for rows.Next() {
+			var queryOutputRow modelstorage.WithdrawalStorageEntry
+			err = rows.Scan(&queryOutputRow.ID, &queryOutputRow.UserID, &queryOutputRow.OrderNumber, &queryOutputRow.Amount, &queryOutputRow.ProcessedAt)
+			if err != nil {
+				chanEr <- &storageErrors.ScanningPSQLError{Err: err}
+				return
+			}
+			queryOutput = append(queryOutput, queryOutputRow)
+		}
+		err = rows.Err()
+		if err != nil {
+			chanEr <- &storageErrors.ScanningPSQLError{Err: err}
+		}
+		chanOk <- queryOutput
+	}()
+	select {
+	case <-ctx.Done():
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting withdrawals failed"))
+		return nil, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
+	case methodErr := <-chanEr:
+		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting withdrawals failed"))
+		return nil, methodErr
+	case query := <-chanOk:
+		s.log.Info().Msg(fmt.Sprint("getting withdrawals done"))
+		return query, nil
+	}
+}
+
 func (s *Storage) createTables(ctx context.Context) error {
 	var queries []string
 	query := `CREATE TABLE IF NOT EXISTS users (

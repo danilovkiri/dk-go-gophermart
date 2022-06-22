@@ -55,7 +55,7 @@ func InitServer(ctx context.Context, cfg *config.Config, log *zerolog.Logger) (s
 	mainGroup.Get("/api/user/orders", nil)
 	mainGroup.Get("/api/user/balance", urlHandler.HandleBalance())
 	mainGroup.Post("/api/user/balance/withdraw", nil)
-	mainGroup.Get("/api/user/balance/withdrawals", nil)
+	mainGroup.Get("/api/user/balance/withdrawals", urlHandler.HandleWithdrawals())
 
 	srv := &http.Server{
 		Addr:         cfg.ServerConfig.ServerAddress,
