@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeluser"
 	serviceErrors "github.com/danilovkiri/dk-go-gophermart/internal/service/processor/v1/errors"
 	"github.com/danilovkiri/dk-go-gophermart/internal/service/secretary/v1"
@@ -52,4 +53,24 @@ func (proc *Processor) LoginUser(ctx context.Context, credentials modeluser.Mode
 	}
 	userCookie := proc.secretary.GetCookieForUser(userID)
 	return userCookie, nil
+}
+
+func (proc *Processor) GetBalance(ctx context.Context, cipheredUserID string) (*modeldto.Balance, error) {
+	userID, err := proc.secretary.Decode(cipheredUserID)
+	if err != nil {
+		return nil, err
+	}
+	currentAmount, err := proc.storage.GetCurrentAmount(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	withdrawnAmount, err := proc.storage.GetWithdrawnAmount(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	balance := modeldto.Balance{
+		CurrentAmount:   currentAmount,
+		WithdrawnAmount: withdrawnAmount,
+	}
+	return &balance, nil
 }

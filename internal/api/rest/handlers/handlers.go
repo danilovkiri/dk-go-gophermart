@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,21 +39,21 @@ func (h *Handler) HandleRegister() http.HandlerFunc {
 		}
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			h.log.Error().Err(err).Msg("handle register failed")
+			h.log.Error().Err(err).Msg("HandleRegister failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		var credentials modeluser.ModelCredentials
 		err = json.Unmarshal(b, &credentials)
 		if err != nil {
-			h.log.Error().Err(err).Msg("handle register failed")
+			h.log.Error().Err(err).Msg("HandleRegister failed")
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		h.log.Info().Msg(fmt.Sprintf("new user register request detected for %s", credentials))
 		userCookie, err := h.service.AddNewUser(ctx, credentials)
 		if err != nil {
-			h.log.Error().Err(err).Msg("handle register failed")
+			h.log.Error().Err(err).Msg("HandleRegister failed")
 			var contextTimeoutExceededError *storageErrors.ContextTimeoutExceededError
 			var alreadyExistsError *storageErrors.AlreadyExistsError
 			if errors.As(err, &contextTimeoutExceededError) {
@@ -79,21 +80,21 @@ func (h *Handler) HandleLogin() http.HandlerFunc {
 		}
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			h.log.Error().Err(err).Msg("handle login failed")
+			h.log.Error().Err(err).Msg("HandleLogin failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		var credentials modeluser.ModelCredentials
 		err = json.Unmarshal(b, &credentials)
 		if err != nil {
-			h.log.Error().Err(err).Msg("handle login failed")
+			h.log.Error().Err(err).Msg("HandleLogin failed")
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		h.log.Info().Msg(fmt.Sprintf("new login request detected for %s", credentials))
 		userCookie, err := h.service.LoginUser(ctx, credentials)
 		if err != nil {
-			h.log.Error().Err(err).Msg("handle login failed")
+			h.log.Error().Err(err).Msg("HandleLogin failed")
 			var contextTimeoutExceededError *storageErrors.ContextTimeoutExceededError
 			var notFoundError *storageErrors.NotFoundError
 			if errors.As(err, &contextTimeoutExceededError) {
@@ -109,4 +110,50 @@ func (h *Handler) HandleLogin() http.HandlerFunc {
 		r.AddCookie(userCookie)
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func (h *Handler) HandleBalance() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		defer cancel()
+		cipheredUserID, err := getUserID(r)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleBalance failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		balance, err := h.service.GetBalance(ctx, cipheredUserID)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleBalance failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		resBody, err := json.Marshal(balance)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleBalance failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(resBody)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleBalance failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+func getUserID(r *http.Request) (string, error) {
+	userCookie, err := r.Cookie("userID")
+	if err != nil {
+		return "", err
+	}
+	token := userCookie.Value
+	data, err := hex.DecodeString(token)
+	if err != nil {
+		return "", err
+	}
+	userID := data
+	return hex.EncodeToString(userID), nil
 }

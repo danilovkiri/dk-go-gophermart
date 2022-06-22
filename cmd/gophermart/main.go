@@ -50,5 +50,5 @@ func main() {
 		log.Fatal().Err(err).Msg("")
 	}
 	//wg.Wait()
-	log.Info().Msg("server start succeeded")
+	log.Info().Msg("server shutdown succeeded")
 }

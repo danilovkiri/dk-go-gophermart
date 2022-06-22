@@ -5,11 +5,17 @@ import (
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeluser"
 )
 
-type Register interface {
+type RegisterLogin interface {
 	AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials, userID string) error
 	CheckUser(ctx context.Context, credentials modeluser.ModelCredentials) (string, error)
 }
 
+type CheckBalance interface {
+	GetCurrentAmount(ctx context.Context, userID string) (float64, error)
+	GetWithdrawnAmount(ctx context.Context, userID string) (float64, error)
+}
+
 type Storage interface {
-	Register
+	RegisterLogin
+	CheckBalance
 }

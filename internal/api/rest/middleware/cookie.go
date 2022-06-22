@@ -30,14 +30,16 @@ func (c *CookieHandler) CookieHandle(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("userID")
 		if errors.Is(err, http.ErrNoCookie) {
-			//http.Redirect(w, r, "/api/user/login", http.StatusSeeOther)
 			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
 		} else if err != nil {
 			http.Error(w, "Cookie crumbled", http.StatusInternalServerError)
+			return
 		} else {
 			_, err := c.sec.Decode(cookie.Value)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
 			}
 		}
 		next.ServeHTTP(w, r)

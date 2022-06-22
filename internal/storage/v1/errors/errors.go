@@ -21,6 +21,9 @@ type (
 	NotFoundError struct {
 		Err error
 	}
+	ScanningPSQLError struct {
+		Err error
+	}
 )
 
 func (e *StatementPSQLError) Error() string {
@@ -41,4 +44,8 @@ func (e *ContextTimeoutExceededError) Error() string {
 
 func (e *NotFoundError) Error() string {
 	return fmt.Sprint("not found in storage")
+}
+
+func (e *ScanningPSQLError) Error() string {
+	return fmt.Sprintf("%s: could not scan rows", e.Err.Error())
 }

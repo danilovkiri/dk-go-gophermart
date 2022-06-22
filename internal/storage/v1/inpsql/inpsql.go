@@ -106,7 +106,7 @@ func (s *Storage) CheckUser(ctx context.Context, credentials modeluser.ModelCred
 	go func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		var queryOutput modelstorage.UsersStorageEntry
+		var queryOutput modelstorage.UserStorageEntry
 		err := selectStmt.QueryRowContext(ctx, credentials.Login).Scan(&queryOutput.ID, &queryOutput.UserID, &queryOutput.Login, &queryOutput.Password, &queryOutput.RegisteredAt)
 		if err != nil {
 			switch {
@@ -140,6 +140,94 @@ func (s *Storage) CheckUser(ctx context.Context, credentials modeluser.ModelCred
 	}
 }
 
+func (s *Storage) GetCurrentAmount(ctx context.Context, userID string) (float64, error) {
+	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM balance WHERE user_id = $1")
+	if err != nil {
+		return 0, &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer selectStmt.Close()
+	chanOk := make(chan float64)
+	chanEr := make(chan error)
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var queryOutput modelstorage.BalanceStorageEntry
+		err := selectStmt.QueryRowContext(ctx, userID).Scan(&queryOutput.ID, &queryOutput.UserID, &queryOutput.Amount)
+		if err != nil {
+			switch {
+			case errors.Is(err, sql.ErrNoRows):
+				chanEr <- &storageErrors.NotFoundError{Err: err}
+				return
+			default:
+				chanEr <- err
+				return
+			}
+		}
+		chanOk <- queryOutput.Amount
+	}()
+	select {
+	case <-ctx.Done():
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting current balance failed"))
+		return 0, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
+	case methodErr := <-chanEr:
+		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting current balance failed"))
+		return 0, methodErr
+	case amount := <-chanOk:
+		s.log.Info().Msg(fmt.Sprint("getting current balance done"))
+		return amount, nil
+	}
+}
+
+func (s *Storage) GetWithdrawnAmount(ctx context.Context, userID string) (float64, error) {
+	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM withdrawals WHERE user_id = $1")
+	if err != nil {
+		return 0, &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer selectStmt.Close()
+	chanOk := make(chan float64)
+	chanEr := make(chan error)
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		rows, err := selectStmt.QueryContext(ctx, userID)
+		if err != nil {
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+			return
+		}
+		defer rows.Close()
+		var queryOutput []modelstorage.WithdrawalStorageEntry
+		for rows.Next() {
+			var queryOutputRow modelstorage.WithdrawalStorageEntry
+			err = rows.Scan(&queryOutputRow.ID, &queryOutputRow.UserID, &queryOutputRow.OrderNumber, &queryOutputRow.Amount, &queryOutputRow.ProcessedAt)
+			if err != nil {
+				chanEr <- &storageErrors.ScanningPSQLError{Err: err}
+				return
+			}
+			queryOutput = append(queryOutput, queryOutputRow)
+		}
+		err = rows.Err()
+		if err != nil {
+			chanEr <- &storageErrors.ScanningPSQLError{Err: err}
+		}
+		var withdrawnAmount float64
+		for _, entry := range queryOutput {
+			withdrawnAmount += entry.Amount
+		}
+		chanOk <- withdrawnAmount
+	}()
+	select {
+	case <-ctx.Done():
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting withdrawn balance failed"))
+		return 0, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
+	case methodErr := <-chanEr:
+		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting withdrawn balance failed"))
+		return 0, methodErr
+	case amount := <-chanOk:
+		s.log.Info().Msg(fmt.Sprint("getting withdrawn balance done"))
+		return amount, nil
+	}
+}
+
 func (s *Storage) createTables(ctx context.Context) error {
 	var queries []string
 	query := `CREATE TABLE IF NOT EXISTS users (
@@ -151,26 +239,26 @@ func (s *Storage) createTables(ctx context.Context) error {
 	);`
 	queries = append(queries, query)
 	query = `CREATE TABLE IF NOT EXISTS orders (
-		id           BIGSERIAL   NOT NULL,
-		user_id      TEXT        NOT NULL UNIQUE,
-		order_number BIGINT      NOT NULL UNIQUE,
-		status		 TEXT 		 NOT NULL,
-		accrual	     BIGINT      NOT NULL,
-		created_at   TIMESTAMPTZ NOT NULL  
+		id           BIGSERIAL      NOT NULL,
+		user_id      TEXT           NOT NULL UNIQUE,
+		order_number BIGINT         NOT NULL UNIQUE,
+		status		 TEXT 		    NOT NULL,
+		accrual	     NUMERIC(10, 2) NOT NULL,
+		created_at   TIMESTAMPTZ    NOT NULL  
 	);`
 	queries = append(queries, query)
 	query = `CREATE TABLE IF NOT EXISTS balance (
-		id      BIGSERIAL NOT NULL,
-		user_id TEXT      NOT NULL UNIQUE,
-		amount  BIGINT    NOT NULL
+		id      BIGSERIAL      NOT NULL,
+		user_id TEXT           NOT NULL UNIQUE,
+		amount  NUMERIC(10, 2) NOT NULL
 	);`
 	queries = append(queries, query)
 	query = `CREATE TABLE IF NOT EXISTS withdrawals (
-		id           BIGSERIAL   NOT NULL,
-		user_id      TEXT        NOT NULL UNIQUE,
-		order_number BIGINT      NOT NULL UNIQUE,
-		amount       BIGINT      NOT NULL UNIQUE,
-		processed_at TIMESTAMPTZ NOT NULL 
+		id           BIGSERIAL      NOT NULL,
+		user_id      TEXT           NOT NULL UNIQUE,
+		order_number BIGINT         NOT NULL UNIQUE,
+		amount       NUMERIC(10, 2) NOT NULL UNIQUE,
+		processed_at TIMESTAMPTZ    NOT NULL 
 	);`
 	queries = append(queries, query)
 	for _, subquery := range queries {
