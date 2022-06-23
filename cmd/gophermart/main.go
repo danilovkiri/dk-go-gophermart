@@ -8,11 +8,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
 
 func main() {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
 	log := logger.InitLog()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -34,6 +38,7 @@ func main() {
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
+		defer wg.Done()
 		<-done
 		log.Info().Msg("server shutdown attempted")
 		ctxTO, cancelTO := context.WithTimeout(ctx, 5*time.Second)
@@ -49,6 +54,6 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal().Err(err).Msg("")
 	}
-	//wg.Wait()
+	wg.Wait()
 	log.Info().Msg("server shutdown succeeded")
 }

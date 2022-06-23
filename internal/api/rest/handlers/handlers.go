@@ -8,8 +8,9 @@ import (
 	"fmt"
 	handlersErrors "github.com/danilovkiri/dk-go-gophermart/internal/api/rest/errors"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
-	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeluser"
+	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
 	"github.com/danilovkiri/dk-go-gophermart/internal/service/processor/v1"
+	serviceErrors "github.com/danilovkiri/dk-go-gophermart/internal/service/processor/v1/errors"
 	storageErrors "github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/errors"
 	"github.com/rs/zerolog"
 	"io/ioutil"
@@ -43,7 +44,7 @@ func (h *Handler) HandleRegister() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		var credentials modeluser.ModelCredentials
+		var credentials modeldto.User
 		err = json.Unmarshal(b, &credentials)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleRegister failed")
@@ -84,7 +85,7 @@ func (h *Handler) HandleLogin() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		var credentials modeluser.ModelCredentials
+		var credentials modeldto.User
 		err = json.Unmarshal(b, &credentials)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleLogin failed")
@@ -112,7 +113,7 @@ func (h *Handler) HandleLogin() http.HandlerFunc {
 	}
 }
 
-func (h *Handler) HandleBalance() http.HandlerFunc {
+func (h *Handler) HandleGetBalance() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
@@ -144,7 +145,7 @@ func (h *Handler) HandleBalance() http.HandlerFunc {
 	}
 }
 
-func (h *Handler) HandleWithdrawals() http.HandlerFunc {
+func (h *Handler) HandleGetWithdrawals() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
@@ -212,6 +213,54 @@ func (h *Handler) HandleGetOrders() http.HandlerFunc {
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleGetOrders failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+func (h *Handler) HandleNewWithdrawal() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		defer cancel()
+		cipheredUserID, err := getUserID(r)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleGetOrders failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			http.Error(w, "Invalid Content-Type", http.StatusBadRequest)
+		}
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleNewWithdrawal failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		var newOrderWithdrawal modeldto.NewOrderWithdrawal
+		err = json.Unmarshal(b, &newOrderWithdrawal)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleNewWithdrawal failed")
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		h.log.Info().Msg(fmt.Sprintf("new withdrawal request detected for %v", newOrderWithdrawal))
+		err = h.service.AddNewWithdrawal(ctx, cipheredUserID, newOrderWithdrawal)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleNewWithdrawal failed")
+			var contextTimeoutExceededError *storageErrors.ContextTimeoutExceededError
+			var alreadyExistsError *storageErrors.AlreadyExistsError
+			var serviceIllegalOrderNumber *serviceErrors.ServiceIllegalOrderNumber
+			var serviceNotEnoughFunds *serviceErrors.ServiceNotEnoughFunds
+			if errors.As(err, &contextTimeoutExceededError) {
+				http.Error(w, err.Error(), http.StatusGatewayTimeout)
+			} else if errors.As(err, &serviceIllegalOrderNumber) || errors.As(err, &alreadyExistsError) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+			} else if errors.As(err, &serviceNotEnoughFunds) {
+				http.Error(w, err.Error(), http.StatusPaymentRequired)
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
 		}
 	}
 }

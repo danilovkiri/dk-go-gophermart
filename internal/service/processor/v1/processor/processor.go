@@ -2,13 +2,15 @@ package processor
 
 import (
 	"context"
+	"fmt"
+	"github.com/ShiraazMoollatjie/goluhn"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
-	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeluser"
 	serviceErrors "github.com/danilovkiri/dk-go-gophermart/internal/service/processor/v1/errors"
 	"github.com/danilovkiri/dk-go-gophermart/internal/service/secretary/v1"
 	"github.com/danilovkiri/dk-go-gophermart/internal/storage/v1"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -31,9 +33,9 @@ func InitService(st storage.Storage, sec secretary.Secretary) (*Processor, error
 	return processor, nil
 }
 
-func (proc *Processor) AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials) (*http.Cookie, error) {
+func (proc *Processor) AddNewUser(ctx context.Context, credentials modeldto.User) (*http.Cookie, error) {
 	newCookie, userID := proc.secretary.NewCookie()
-	cipheredCredentials := modeluser.ModelCredentials{
+	cipheredCredentials := modeldto.User{
 		Login:    proc.secretary.Encode(credentials.Login),
 		Password: proc.secretary.Encode(credentials.Password),
 	}
@@ -44,8 +46,8 @@ func (proc *Processor) AddNewUser(ctx context.Context, credentials modeluser.Mod
 	return newCookie, nil
 }
 
-func (proc *Processor) LoginUser(ctx context.Context, credentials modeluser.ModelCredentials) (*http.Cookie, error) {
-	cipheredCredentials := modeluser.ModelCredentials{
+func (proc *Processor) LoginUser(ctx context.Context, credentials modeldto.User) (*http.Cookie, error) {
+	cipheredCredentials := modeldto.User{
 		Login:    proc.secretary.Encode(credentials.Login),
 		Password: proc.secretary.Encode(credentials.Password),
 	}
@@ -128,4 +130,27 @@ func (proc *Processor) GetOrders(ctx context.Context, cipheredUserID string) ([]
 		return time1.Before(time2)
 	})
 	return responseOrders, nil
+}
+
+func (proc *Processor) AddNewWithdrawal(ctx context.Context, cipheredUserID string, withdrawal modeldto.NewOrderWithdrawal) error {
+	userID, err := proc.secretary.Decode(cipheredUserID)
+	if err != nil {
+		return err
+	}
+	err = goluhn.Validate(strconv.Itoa(withdrawal.OrderNumber))
+	if err != nil {
+		return &serviceErrors.ServiceIllegalOrderNumber{Msg: fmt.Sprintf("illegal order number %v", withdrawal.OrderNumber)}
+	}
+	currentAmount, err := proc.storage.GetCurrentAmount(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if currentAmount < withdrawal.Amount {
+		return &serviceErrors.ServiceNotEnoughFunds{Msg: fmt.Sprintf("not enough funds are available, present - %v, required - %v", currentAmount, withdrawal.Amount)}
+	}
+	err = proc.storage.AddNewWithdrawal(ctx, userID, withdrawal)
+	if err != nil {
+		return err
+	}
+	return nil
 }

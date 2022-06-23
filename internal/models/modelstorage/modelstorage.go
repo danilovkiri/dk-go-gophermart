@@ -17,7 +17,7 @@ type BalanceStorageEntry struct {
 type WithdrawalStorageEntry struct {
 	ID          uint    `db:"id"`
 	UserID      string  `db:"user_id"`
-	OrderNumber int32   `db:"order_number"`
+	OrderNumber int     `db:"order_number"`
 	Amount      float64 `db:"amount"`
 	ProcessedAt string  `db:"processed_at"`
 }
@@ -25,7 +25,7 @@ type WithdrawalStorageEntry struct {
 type OrderStorageEntry struct {
 	ID          uint    `db:"id"`
 	UserID      string  `db:"user_id"`
-	OrderNumber int32   `db:"order_number"`
+	OrderNumber int     `db:"order_number"`
 	Status      string  `db:"status"`
 	Accrual     float64 `db:"accrual"`
 	CreatedAt   string  `db:"created_at"`

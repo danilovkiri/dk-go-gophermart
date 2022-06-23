@@ -8,13 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
+	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelstorage"
-	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeluser"
 	storageErrors "github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/errors"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/rs/zerolog"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -45,7 +46,7 @@ func InitStorage(ctx context.Context, cfg *config.StorageConfig, log *zerolog.Lo
 	return &st, nil
 }
 
-func (s *Storage) AddNewUser(ctx context.Context, credentials modeluser.ModelCredentials, userID string) error {
+func (s *Storage) AddNewUser(ctx context.Context, credentials modeldto.User, userID string) error {
 	newUserStmt, err := s.DB.PrepareContext(ctx, "INSERT INTO users (user_id, login, password, registered_at) VALUES ($1, $2, $3, $4)")
 	if err != nil {
 		return &storageErrors.StatementPSQLError{Err: err}
@@ -95,7 +96,7 @@ func (s *Storage) AddNewUser(ctx context.Context, credentials modeluser.ModelCre
 	}
 }
 
-func (s *Storage) CheckUser(ctx context.Context, credentials modeluser.ModelCredentials) (string, error) {
+func (s *Storage) CheckUser(ctx context.Context, credentials modeldto.User) (string, error) {
 	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM users WHERE login = $1")
 	if err != nil {
 		return "", &storageErrors.StatementPSQLError{Err: err}
@@ -317,6 +318,66 @@ func (s *Storage) GetOrders(ctx context.Context, userID string) ([]modelstorage.
 	case query := <-chanOk:
 		s.log.Info().Msg(fmt.Sprint("getting orders done"))
 		return query, nil
+	}
+}
+
+func (s *Storage) AddNewWithdrawal(ctx context.Context, userID string, withdrawal modeldto.NewOrderWithdrawal) error {
+	newOrderStmt, err := s.DB.PrepareContext(ctx, "INSERT INTO orders (user_id, order_number, status, accrual, created_at) VALUES ($1, $2, $3, $4, $5)")
+	if err != nil {
+		return &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer newOrderStmt.Close()
+	newWithdrawalStmt, err := s.DB.PrepareContext(ctx, "INSERT INTO withdrawals (user_id, order_number, amount, processed_at) VALUES ($1, $2, $3, $4)")
+	if err != nil {
+		return &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer newWithdrawalStmt.Close()
+	updBalanceStmt, err := s.DB.PrepareContext(ctx, "UPDATE balance SET amount = (amount - $1) WHERE user_id = $2")
+	if err != nil {
+		return &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer updBalanceStmt.Close()
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return &storageErrors.ExecutionPSQLError{Err: err}
+	}
+	defer tx.Rollback()
+	txNewOrderStmt := tx.StmtContext(ctx, newOrderStmt)
+	txNewWithdrawalStmt := tx.StmtContext(ctx, newWithdrawalStmt)
+	txUpdBalanceStmt := tx.StmtContext(ctx, updBalanceStmt)
+	chanOk := make(chan bool)
+	chanEr := make(chan error)
+	go func() {
+		_, err = txNewOrderStmt.ExecContext(ctx, userID, withdrawal.OrderNumber, "PROCESSED", 0.0, time.Now().Format(time.RFC3339))
+		if err != nil {
+			if err, ok := err.(*pgconn.PgError); ok && err.Code == pgerrcode.UniqueViolation {
+				chanEr <- &storageErrors.AlreadyExistsError{Err: err, ID: strconv.Itoa(withdrawal.OrderNumber)}
+			}
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+		}
+		_, err = txNewWithdrawalStmt.ExecContext(ctx, userID, withdrawal.OrderNumber, withdrawal.Amount, time.Now().Format(time.RFC3339))
+		if err != nil {
+			if err, ok := err.(*pgconn.PgError); ok && err.Code == pgerrcode.UniqueViolation {
+				chanEr <- &storageErrors.AlreadyExistsError{Err: err, ID: strconv.Itoa(withdrawal.OrderNumber)}
+			}
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+		}
+		_, err = txUpdBalanceStmt.ExecContext(ctx, withdrawal.Amount, userID)
+		if err != nil {
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+		}
+		chanOk <- true
+	}()
+	select {
+	case <-ctx.Done():
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("processing new withdrawal order failed"))
+		return &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
+	case methodErr := <-chanEr:
+		s.log.Error().Err(methodErr).Msg(fmt.Sprint("processing new withdrawal order failed"))
+		return methodErr
+	case <-chanOk:
+		s.log.Info().Msg(fmt.Sprint("processing new withdrawal order done"))
+		return tx.Commit()
 	}
 }
 

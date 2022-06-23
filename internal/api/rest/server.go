@@ -47,15 +47,15 @@ func InitServer(ctx context.Context, cfg *config.Config, log *zerolog.Logger) (s
 	r.Use(middleware.CompressHandle)
 	r.Use(middleware.DecompressHandle)
 	loginGroup := r.Group(nil)
-	loginGroup.Post("/api/user/register", urlHandler.HandleRegister())
-	loginGroup.Post("/api/user/login", urlHandler.HandleLogin())
 	mainGroup := r.Group(nil)
 	mainGroup.Use(cookieHandler.CookieHandle)
+	loginGroup.Post("/api/user/register", urlHandler.HandleRegister())
+	loginGroup.Post("/api/user/login", urlHandler.HandleLogin())
 	mainGroup.Post("/api/user/orders", nil)
 	mainGroup.Get("/api/user/orders", urlHandler.HandleGetOrders())
-	mainGroup.Get("/api/user/balance", urlHandler.HandleBalance())
-	mainGroup.Post("/api/user/balance/withdraw", nil)
-	mainGroup.Get("/api/user/balance/withdrawals", urlHandler.HandleWithdrawals())
+	mainGroup.Get("/api/user/balance", urlHandler.HandleGetBalance())
+	mainGroup.Post("/api/user/balance/withdraw", urlHandler.HandleNewWithdrawal())
+	mainGroup.Get("/api/user/balance/withdrawals", urlHandler.HandleGetWithdrawals())
 
 	srv := &http.Server{
 		Addr:         cfg.ServerConfig.ServerAddress,
