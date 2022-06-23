@@ -12,4 +12,5 @@ type Processor interface {
 	LoginUser(ctx context.Context, credentials modeluser.ModelCredentials) (*http.Cookie, error)
 	GetBalance(ctx context.Context, cipheredUserID string) (*modeldto.Balance, error)
 	GetWithdrawals(ctx context.Context, cipheredUserID string) ([]modeldto.Withdrawal, error)
+	GetOrders(ctx context.Context, cipheredUserID string) ([]modeldto.Order, error)
 }

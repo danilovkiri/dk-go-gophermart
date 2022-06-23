@@ -20,8 +20,13 @@ type CheckWithdrawals interface {
 	GetWithdrawals(ctx context.Context, userID string) ([]modelstorage.WithdrawalStorageEntry, error)
 }
 
+type CheckOrders interface {
+	GetOrders(ctx context.Context, userID string) ([]modelstorage.OrderStorageEntry, error)
+}
+
 type Storage interface {
 	RegisterLogin
 	CheckBalance
 	CheckWithdrawals
+	CheckOrders
 }

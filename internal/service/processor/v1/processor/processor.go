@@ -102,3 +102,30 @@ func (proc *Processor) GetWithdrawals(ctx context.Context, cipheredUserID string
 	})
 	return responseWithdrawals, nil
 }
+
+func (proc *Processor) GetOrders(ctx context.Context, cipheredUserID string) ([]modeldto.Order, error) {
+	userID, err := proc.secretary.Decode(cipheredUserID)
+	if err != nil {
+		return nil, err
+	}
+	orders, err := proc.storage.GetOrders(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	var responseOrders []modeldto.Order
+	for _, order := range orders {
+		responseOrder := modeldto.Order{
+			OrderNumber: order.OrderNumber,
+			Status:      order.Status,
+			Accrual:     order.Accrual,
+			UploadedAt:  order.CreatedAt,
+		}
+		responseOrders = append(responseOrders, responseOrder)
+	}
+	sort.Slice(responseOrders, func(i, j int) bool {
+		time1, _ := time.Parse(time.RFC3339, responseOrders[i].UploadedAt)
+		time2, _ := time.Parse(time.RFC3339, responseOrders[j].UploadedAt)
+		return time1.Before(time2)
+	})
+	return responseOrders, nil
+}

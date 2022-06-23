@@ -274,10 +274,56 @@ func (s *Storage) GetWithdrawals(ctx context.Context, userID string) ([]modelsto
 	}
 }
 
+func (s *Storage) GetOrders(ctx context.Context, userID string) ([]modelstorage.OrderStorageEntry, error) {
+	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM orders WHERE user_id = $1")
+	if err != nil {
+		return nil, &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer selectStmt.Close()
+	chanOk := make(chan []modelstorage.OrderStorageEntry)
+	chanEr := make(chan error)
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		rows, err := selectStmt.QueryContext(ctx, userID)
+		if err != nil {
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+			return
+		}
+		defer rows.Close()
+		var queryOutput []modelstorage.OrderStorageEntry
+		for rows.Next() {
+			var queryOutputRow modelstorage.OrderStorageEntry
+			err = rows.Scan(&queryOutputRow.ID, &queryOutputRow.UserID, &queryOutputRow.OrderNumber, &queryOutputRow.Status, &queryOutputRow.Accrual, &queryOutputRow.CreatedAt)
+			if err != nil {
+				chanEr <- &storageErrors.ScanningPSQLError{Err: err}
+				return
+			}
+			queryOutput = append(queryOutput, queryOutputRow)
+		}
+		err = rows.Err()
+		if err != nil {
+			chanEr <- &storageErrors.ScanningPSQLError{Err: err}
+		}
+		chanOk <- queryOutput
+	}()
+	select {
+	case <-ctx.Done():
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting orders failed"))
+		return nil, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
+	case methodErr := <-chanEr:
+		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting orders failed"))
+		return nil, methodErr
+	case query := <-chanOk:
+		s.log.Info().Msg(fmt.Sprint("getting orders done"))
+		return query, nil
+	}
+}
+
 func (s *Storage) createTables(ctx context.Context) error {
 	var queries []string
 	query := `CREATE TABLE IF NOT EXISTS users (
-		id            BIGSERIAL   NOT NULL,
+		id            BIGSERIAL   NOT NULL UNIQUE,
 		user_id       TEXT        NOT NULL UNIQUE,
 		login         TEXT        NOT NULL UNIQUE,
 		password      TEXT        NOT NULL,
@@ -285,8 +331,8 @@ func (s *Storage) createTables(ctx context.Context) error {
 	);`
 	queries = append(queries, query)
 	query = `CREATE TABLE IF NOT EXISTS orders (
-		id           BIGSERIAL      NOT NULL,
-		user_id      TEXT           NOT NULL UNIQUE,
+		id           BIGSERIAL      NOT NULL UNIQUE,
+		user_id      TEXT           NOT NULL,
 		order_number BIGINT         NOT NULL UNIQUE,
 		status		 TEXT 		    NOT NULL,
 		accrual	     NUMERIC(10, 2) NOT NULL,
@@ -294,16 +340,16 @@ func (s *Storage) createTables(ctx context.Context) error {
 	);`
 	queries = append(queries, query)
 	query = `CREATE TABLE IF NOT EXISTS balance (
-		id      BIGSERIAL      NOT NULL,
+		id      BIGSERIAL      NOT NULL UNIQUE,
 		user_id TEXT           NOT NULL UNIQUE,
 		amount  NUMERIC(10, 2) NOT NULL
 	);`
 	queries = append(queries, query)
 	query = `CREATE TABLE IF NOT EXISTS withdrawals (
-		id           BIGSERIAL      NOT NULL,
-		user_id      TEXT           NOT NULL UNIQUE,
+		id           BIGSERIAL      NOT NULL UNIQUE,
+		user_id      TEXT           NOT NULL,
 		order_number BIGINT         NOT NULL UNIQUE,
-		amount       NUMERIC(10, 2) NOT NULL UNIQUE,
+		amount       NUMERIC(10, 2) NOT NULL,
 		processed_at TIMESTAMPTZ    NOT NULL 
 	);`
 	queries = append(queries, query)

@@ -180,6 +180,42 @@ func (h *Handler) HandleWithdrawals() http.HandlerFunc {
 	}
 }
 
+func (h *Handler) HandleGetOrders() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		defer cancel()
+		cipheredUserID, err := getUserID(r)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleGetOrders failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		orders, err := h.service.GetOrders(ctx, cipheredUserID)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleGetOrders failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if len(orders) == 0 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		resBody, err := json.Marshal(orders)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleGetOrders failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(resBody)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleGetOrders failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
 func getUserID(r *http.Request) (string, error) {
 	userCookie, err := r.Cookie("userID")
 	if err != nil {
