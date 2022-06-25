@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -262,6 +263,57 @@ func (h *Handler) HandleNewWithdrawal() http.HandlerFunc {
 			}
 			return
 		}
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func (h *Handler) HandleNewOrder() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		defer cancel()
+		cipheredUserID, err := getUserID(r)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleNewOrder failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if r.Header.Get("Content-Type") != "text/plain" {
+			http.Error(w, "Invalid Content-Type", http.StatusBadRequest)
+		}
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleNewOrder failed")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		orderNumber, err := strconv.Atoi(string(b))
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleNewOrder failed")
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		h.log.Info().Msg(fmt.Sprintf("new order request detected for order %v", orderNumber))
+		err = h.service.AddNewOrder(ctx, cipheredUserID, orderNumber)
+		if err != nil {
+			h.log.Error().Err(err).Msg("HandleNewWithdrawal failed")
+			var contextTimeoutExceededError *storageErrors.ContextTimeoutExceededError
+			var alreadyExistsError *storageErrors.AlreadyExistsError
+			var alreadyExistsAndViolatesError *storageErrors.AlreadyExistsAndViolatesError
+			var serviceIllegalOrderNumber *serviceErrors.ServiceIllegalOrderNumber
+			if errors.As(err, &contextTimeoutExceededError) {
+				http.Error(w, err.Error(), http.StatusGatewayTimeout)
+			} else if errors.As(err, &serviceIllegalOrderNumber) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+			} else if errors.As(err, &alreadyExistsError) {
+				w.WriteHeader(http.StatusOK)
+			} else if errors.As(err, &alreadyExistsAndViolatesError) {
+				w.WriteHeader(http.StatusConflict)
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 

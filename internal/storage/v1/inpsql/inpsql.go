@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
+	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelqueue"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelstorage"
 	storageErrors "github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/errors"
 	"github.com/jackc/pgconn"
@@ -21,28 +22,70 @@ import (
 )
 
 type Storage struct {
-	mu  sync.Mutex
-	Cfg *config.StorageConfig
-	DB  *sql.DB
-	log *zerolog.Logger
+	mu       sync.Mutex
+	cfg      *config.StorageConfig
+	DB       *sql.DB
+	log      *zerolog.Logger
+	QueueIn  chan modelqueue.OrderQueueEntry
+	QueueOut chan modelqueue.OrderQueueEntry
 }
 
-func InitStorage(ctx context.Context, cfg *config.StorageConfig, log *zerolog.Logger) (*Storage, error) {
+func InitStorage(ctx context.Context, cfg *config.StorageConfig, log *zerolog.Logger, wg *sync.WaitGroup) (*Storage, error) {
 	db, err := sql.Open("pgx", cfg.DatabaseDSN)
 	if err != nil {
-		log.Fatal().Err(err).Msg("")
+		log.Fatal().Err(err).Msg("could not prepare a DB connection")
 	}
 	// initialize a Storage
+	queueIn := make(chan modelqueue.OrderQueueEntry)
+	queueOut := make(chan modelqueue.OrderQueueEntry)
 	st := Storage{
-		Cfg: cfg,
-		DB:  db,
-		log: log,
+		cfg:      cfg,
+		DB:       db,
+		log:      log,
+		QueueIn:  queueIn,
+		QueueOut: queueOut,
 	}
 	err = st.createTables(ctx)
 	if err != nil {
-		log.Fatal().Err(err).Msg("")
+		log.Fatal().Err(err).Msg("could not create DB tables")
 	}
 	log.Info().Msg("PSQL DB connection was established")
+
+	// send unprocessed orders from DB to queueIn upon initialization
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		stalledOrders, err := st.getStalledOrders(ctx)
+		if err != nil {
+			log.Fatal().Err(err).Msg("could not retrieve stalled orders")
+		}
+		for _, stalledOrder := range stalledOrders {
+			st.SendToQueue(modelqueue.OrderQueueEntry{
+				UserID:      stalledOrder.UserID,
+				OrderNumber: stalledOrder.OrderNumber,
+				OrderStatus: stalledOrder.Status,
+			})
+		}
+		log.Info().Msg(fmt.Sprintf("%v stalled orders were sent for processing", len(stalledOrders)))
+		<-ctx.Done()
+		err = st.DB.Close()
+		if err != nil {
+			log.Fatal().Err(err).Msg("could not close DB connection")
+		}
+		log.Info().Msg("PSQL DB connection was closed")
+	}()
+
+	// listen for processed orders from queueOut and update them in DB
+	wg.Add(1)
+	go func() {
+		log.Info().Msg("started listening to queue for processed orders")
+		defer wg.Done()
+		for record := range st.QueueOut {
+			err := st.updateOrder(ctx, record.OrderNumber, record.OrderStatus, record.Accrual, record.UserID)
+			log.Warn().Err(err).Msg(fmt.Sprintf("could not update order %v", record.OrderNumber))
+		}
+		log.Info().Msg("stopped listening to queue for processed orders")
+	}()
 	return &st, nil
 }
 
@@ -377,6 +420,150 @@ func (s *Storage) AddNewWithdrawal(ctx context.Context, userID string, withdrawa
 		return methodErr
 	case <-chanOk:
 		s.log.Info().Msg(fmt.Sprint("processing new withdrawal order done"))
+		return tx.Commit()
+	}
+}
+
+func (s *Storage) SendToQueue(item modelqueue.OrderQueueEntry) {
+	s.QueueIn <- item
+}
+
+func (s *Storage) AddNewOrder(ctx context.Context, userID string, orderNumber int) error {
+	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM orders WHERE order_number = $1")
+	if err != nil {
+		return &storageErrors.StatementPSQLError{Err: err}
+	}
+	newOrderStmt, err := s.DB.PrepareContext(ctx, "INSERT INTO orders (user_id, order_number, status, accrual, created_at) VALUES ($1, $2, $3, $4, $5)")
+	if err != nil {
+		return &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer selectStmt.Close()
+	defer newOrderStmt.Close()
+	chanOk := make(chan bool)
+	chanEr := make(chan error)
+	go func() {
+		_, err = newOrderStmt.ExecContext(ctx, userID, orderNumber, "NEW", 0.0, time.Now().Format(time.RFC3339))
+		if err != nil {
+			if err, ok := err.(*pgconn.PgError); ok && err.Code == pgerrcode.UniqueViolation {
+				// distinguish http.StatusOK from http.Conflict
+				var queryOutput modelstorage.OrderStorageEntry
+				err := selectStmt.QueryRowContext(ctx, orderNumber).Scan(&queryOutput.ID, &queryOutput.UserID, &queryOutput.OrderNumber, &queryOutput.Status, &queryOutput.Accrual, &queryOutput.CreatedAt)
+				if err != nil {
+					chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+				} else {
+					if queryOutput.UserID == userID {
+						chanEr <- &storageErrors.AlreadyExistsError{Err: err, ID: strconv.Itoa(orderNumber)}
+					}
+					chanEr <- &storageErrors.AlreadyExistsAndViolatesError{Err: err, ID: strconv.Itoa(orderNumber)}
+				}
+			}
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+		}
+		chanOk <- true
+	}()
+
+	select {
+	case <-ctx.Done():
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprintf("adding new order failed for order %v", orderNumber))
+		return &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
+	case methodErr := <-chanEr:
+		s.log.Error().Err(methodErr).Msg(fmt.Sprintf("adding new order failed for order %v", orderNumber))
+		return methodErr
+	case <-chanOk:
+		s.log.Info().Msg(fmt.Sprintf("adding new order done for order %v", orderNumber))
+		return nil
+	}
+}
+
+func (s *Storage) getStalledOrders(ctx context.Context) ([]modelstorage.OrderStorageEntry, error) {
+	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM orders WHERE status NOT IN ('PROCESSED', 'INVALID')")
+	if err != nil {
+		return nil, &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer selectStmt.Close()
+	chanOk := make(chan []modelstorage.OrderStorageEntry)
+	chanEr := make(chan error)
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		rows, err := selectStmt.QueryContext(ctx)
+		if err != nil {
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+			return
+		}
+		defer rows.Close()
+		var queryOutput []modelstorage.OrderStorageEntry
+		for rows.Next() {
+			var queryOutputRow modelstorage.OrderStorageEntry
+			err = rows.Scan(&queryOutputRow.ID, &queryOutputRow.UserID, &queryOutputRow.OrderNumber, &queryOutputRow.Status, &queryOutputRow.Accrual, &queryOutputRow.CreatedAt)
+			if err != nil {
+				chanEr <- &storageErrors.ScanningPSQLError{Err: err}
+				return
+			}
+			queryOutput = append(queryOutput, queryOutputRow)
+		}
+		err = rows.Err()
+		if err != nil {
+			chanEr <- &storageErrors.ScanningPSQLError{Err: err}
+		}
+		chanOk <- queryOutput
+	}()
+	select {
+	case <-ctx.Done():
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting stalled orders failed"))
+		return nil, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
+	case methodErr := <-chanEr:
+		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting stalled orders failed"))
+		return nil, methodErr
+	case query := <-chanOk:
+		s.log.Info().Msg(fmt.Sprint("getting stalled orders done"))
+		return query, nil
+	}
+}
+
+func (s *Storage) updateOrder(ctx context.Context, orderNumber int, status string, accrual float64, userID string) error {
+	updOrderStmt, err := s.DB.PrepareContext(ctx, "UPDATE orders SET status = $1, accrual = $2 WHERE order_number = $3")
+	if err != nil {
+		return &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer updOrderStmt.Close()
+	updBalanceStmt, err := s.DB.PrepareContext(ctx, "UPDATE balance SET amount = (amount + $1) WHERE user_id = $2")
+	if err != nil {
+		return &storageErrors.StatementPSQLError{Err: err}
+	}
+	defer updBalanceStmt.Close()
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return &storageErrors.ExecutionPSQLError{Err: err}
+	}
+	defer tx.Rollback()
+	txUpdOrderStmt := tx.StmtContext(ctx, updOrderStmt)
+	txUpdBalanceStmt := tx.StmtContext(ctx, updBalanceStmt)
+	chanOk := make(chan bool)
+	chanEr := make(chan error)
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		_, err = txUpdOrderStmt.ExecContext(ctx, status, accrual, orderNumber)
+		if err != nil {
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+		}
+		_, err = txUpdBalanceStmt.ExecContext(ctx, accrual, userID)
+		if err != nil {
+			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
+		}
+		chanOk <- true
+	}()
+
+	select {
+	case <-ctx.Done():
+		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprintf("updating order failed for order %v", orderNumber))
+		return &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
+	case methodErr := <-chanEr:
+		s.log.Error().Err(methodErr).Msg(fmt.Sprintf("updating order failed for order %v", orderNumber))
+		return methodErr
+	case <-chanOk:
+		s.log.Info().Msg(fmt.Sprintf("updating order done for order %v", orderNumber))
 		return tx.Commit()
 	}
 }

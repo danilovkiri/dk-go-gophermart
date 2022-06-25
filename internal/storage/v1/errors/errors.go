@@ -12,6 +12,10 @@ type (
 		Err error
 		ID  string
 	}
+	AlreadyExistsAndViolatesError struct {
+		Err error
+		ID  string
+	}
 	ExecutionPSQLError struct {
 		Err error
 	}
@@ -31,6 +35,10 @@ func (e *StatementPSQLError) Error() string {
 }
 
 func (e *AlreadyExistsError) Error() string {
+	return fmt.Sprintf("%s: already exists", e.ID)
+}
+
+func (e *AlreadyExistsAndViolatesError) Error() string {
 	return fmt.Sprintf("%s: already exists", e.ID)
 }
 

@@ -15,7 +15,6 @@ import (
 
 func main() {
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
 
 	log := logger.InitLog()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -29,7 +28,7 @@ func main() {
 	cfg.ParseFlags()
 
 	// initialize server
-	server, err := rest.InitServer(ctx, cfg, log)
+	server, err := rest.InitServer(ctx, cfg, log, wg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
@@ -37,6 +36,7 @@ func main() {
 	// set a listener for graceful shutdown
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		<-done

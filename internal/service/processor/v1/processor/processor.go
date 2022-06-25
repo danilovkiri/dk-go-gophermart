@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ShiraazMoollatjie/goluhn"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
+	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelqueue"
 	serviceErrors "github.com/danilovkiri/dk-go-gophermart/internal/service/processor/v1/errors"
 	"github.com/danilovkiri/dk-go-gophermart/internal/service/secretary/v1"
 	"github.com/danilovkiri/dk-go-gophermart/internal/storage/v1"
@@ -152,5 +153,26 @@ func (proc *Processor) AddNewWithdrawal(ctx context.Context, cipheredUserID stri
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (proc *Processor) AddNewOrder(ctx context.Context, cipheredUserID string, orderNumber int) error {
+	userID, err := proc.secretary.Decode(cipheredUserID)
+	if err != nil {
+		return err
+	}
+	err = goluhn.Validate(strconv.Itoa(orderNumber))
+	if err != nil {
+		return &serviceErrors.ServiceIllegalOrderNumber{Msg: fmt.Sprintf("illegal order number %v", orderNumber)}
+	}
+	err = proc.storage.AddNewOrder(ctx, userID, orderNumber)
+	if err != nil {
+		return err
+	}
+	proc.storage.SendToQueue(modelqueue.OrderQueueEntry{
+		UserID:      userID,
+		OrderNumber: orderNumber,
+		OrderStatus: "NEW",
+	})
 	return nil
 }

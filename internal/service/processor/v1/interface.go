@@ -13,4 +13,5 @@ type Processor interface {
 	GetWithdrawals(ctx context.Context, cipheredUserID string) ([]modeldto.Withdrawal, error)
 	GetOrders(ctx context.Context, cipheredUserID string) ([]modeldto.Order, error)
 	AddNewWithdrawal(ctx context.Context, cipheredUserID string, withdrawal modeldto.NewOrderWithdrawal) error
+	AddNewOrder(ctx context.Context, cipheredUserID string, orderNumber int) error
 }

@@ -11,6 +11,7 @@ require (
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/jackc/pgx/v4 v4.16.1
 	github.com/rs/zerolog v1.15.0
+	golang.org/x/sync v0.0.0-20190423024810-112230192c58
 )
 
 require (

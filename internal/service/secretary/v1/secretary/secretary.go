@@ -60,11 +60,11 @@ func (s *Secretary) NewCookie() (*http.Cookie, string) {
 	userID := uuid.New().String()
 	token := s.Encode(userID)
 	newCookie := &http.Cookie{
-		Name:  "userID",
-		Value: token,
-		Path:  "/",
-		//Expires: time.Now().Add(10 * time.Minute),
-		Expires: time.Now().Add(30 * time.Second),
+		Name:    "userID",
+		Value:   token,
+		Path:    "/",
+		Expires: time.Now().Add(10 * time.Minute),
+		//Expires: time.Now().Add(30 * time.Second),
 	}
 	return newCookie, userID
 }
@@ -73,11 +73,11 @@ func (s *Secretary) NewCookie() (*http.Cookie, string) {
 func (s *Secretary) GetCookieForUser(userID string) *http.Cookie {
 	token := s.Encode(userID)
 	userCookie := &http.Cookie{
-		Name:  "userID",
-		Value: token,
-		Path:  "/",
-		//Expires: time.Now().Add(10 * time.Minute),
-		Expires: time.Now().Add(30 * time.Second),
+		Name:    "userID",
+		Value:   token,
+		Path:    "/",
+		Expires: time.Now().Add(10 * time.Minute),
+		//Expires: time.Now().Add(30 * time.Second),
 	}
 	return userCookie
 }

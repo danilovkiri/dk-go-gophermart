@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
+	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelqueue"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelstorage"
 )
 
@@ -27,6 +28,10 @@ type CheckOrders interface {
 type NewWithdrawal interface {
 	AddNewWithdrawal(ctx context.Context, userID string, withdrawal modeldto.NewOrderWithdrawal) error
 }
+type NewOrder interface {
+	AddNewOrder(ctx context.Context, userID string, orderNumber int) error
+	SendToQueue(item modelqueue.OrderQueueEntry)
+}
 
 type Storage interface {
 	RegisterLogin
@@ -34,4 +39,5 @@ type Storage interface {
 	CheckWithdrawals
 	CheckOrders
 	NewWithdrawal
+	NewOrder
 }
