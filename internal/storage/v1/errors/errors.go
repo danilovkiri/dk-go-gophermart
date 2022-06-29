@@ -53,7 +53,7 @@ func (e *ContextTimeoutExceededError) Error() string {
 }
 
 func (e *NotFoundError) Error() string {
-	return fmt.Sprint("not found in storage")
+	return "not found in storage"
 }
 
 func (e *ScanningPSQLError) Error() string {
