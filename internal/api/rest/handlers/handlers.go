@@ -15,7 +15,6 @@ import (
 	"github.com/rs/zerolog"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 	"time"
 )
 
@@ -53,6 +52,11 @@ func (h *Handler) HandleRegister() http.HandlerFunc {
 			return
 		}
 		h.log.Info().Msg(fmt.Sprintf("new user register request detected for %s", credentials))
+		if len(credentials.Login) == 0 || len(credentials.Password) == 0 {
+			h.log.Error().Err(err).Msg("HandleRegister failed")
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		userCookie, err := h.service.AddNewUser(ctx, credentials)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleRegister failed")
@@ -94,6 +98,11 @@ func (h *Handler) HandleLogin() http.HandlerFunc {
 			return
 		}
 		h.log.Info().Msg(fmt.Sprintf("new login request detected for %s", credentials))
+		if credentials.Login == "" || credentials.Password == "" {
+			h.log.Error().Msg("HandleRegister failed")
+			http.Error(w, "Empty values are not allowed", http.StatusBadRequest)
+			return
+		}
 		userCookie, err := h.service.LoginUser(ctx, credentials)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleLogin failed")
@@ -286,13 +295,8 @@ func (h *Handler) HandleNewOrder() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		orderNumber, err := strconv.Atoi(string(b))
-		if err != nil {
-			h.log.Error().Err(err).Msg("HandleNewOrder failed")
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		h.log.Info().Msg(fmt.Sprintf("new order request detected for order %v", orderNumber))
+		orderNumber := string(b)
+		h.log.Info().Msg(fmt.Sprintf("new order request detected for order %s", orderNumber))
 		err = h.service.AddNewOrder(ctx, cipheredUserID, orderNumber)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleNewWithdrawal failed")

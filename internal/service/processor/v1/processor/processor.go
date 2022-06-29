@@ -92,7 +92,7 @@ func (proc *Processor) GetWithdrawals(ctx context.Context, cipheredUserID string
 	var responseWithdrawals []modeldto.Withdrawal
 	for _, withdrawal := range withdrawals {
 		responseWithdrawal := modeldto.Withdrawal{
-			OrderNumber:     withdrawal.OrderNumber,
+			OrderNumber:     strconv.Itoa(withdrawal.OrderNumber),
 			WithdrawnAmount: withdrawal.Amount,
 			ProcessedAt:     withdrawal.ProcessedAt,
 		}
@@ -118,7 +118,7 @@ func (proc *Processor) GetOrders(ctx context.Context, cipheredUserID string) ([]
 	var responseOrders []modeldto.Order
 	for _, order := range orders {
 		responseOrder := modeldto.Order{
-			OrderNumber: order.OrderNumber,
+			OrderNumber: strconv.Itoa(order.OrderNumber),
 			Status:      order.Status,
 			Accrual:     order.Accrual,
 			UploadedAt:  order.CreatedAt,
@@ -138,9 +138,9 @@ func (proc *Processor) AddNewWithdrawal(ctx context.Context, cipheredUserID stri
 	if err != nil {
 		return err
 	}
-	err = goluhn.Validate(strconv.Itoa(withdrawal.OrderNumber))
+	err = goluhn.Validate(withdrawal.OrderNumber)
 	if err != nil {
-		return &serviceErrors.ServiceIllegalOrderNumber{Msg: fmt.Sprintf("illegal order number %v", withdrawal.OrderNumber)}
+		return &serviceErrors.ServiceIllegalOrderNumber{Msg: fmt.Sprintf("illegal order number %s", withdrawal.OrderNumber)}
 	}
 	currentAmount, err := proc.storage.GetCurrentAmount(ctx, userID)
 	if err != nil {
@@ -156,22 +156,26 @@ func (proc *Processor) AddNewWithdrawal(ctx context.Context, cipheredUserID stri
 	return nil
 }
 
-func (proc *Processor) AddNewOrder(ctx context.Context, cipheredUserID string, orderNumber int) error {
+func (proc *Processor) AddNewOrder(ctx context.Context, cipheredUserID, orderNumber string) error {
 	userID, err := proc.secretary.Decode(cipheredUserID)
 	if err != nil {
 		return err
 	}
-	err = goluhn.Validate(strconv.Itoa(orderNumber))
+	err = goluhn.Validate(orderNumber)
 	if err != nil {
-		return &serviceErrors.ServiceIllegalOrderNumber{Msg: fmt.Sprintf("illegal order number %v", orderNumber)}
+		return &serviceErrors.ServiceIllegalOrderNumber{Msg: fmt.Sprintf("illegal order number %s", orderNumber)}
 	}
-	err = proc.storage.AddNewOrder(ctx, userID, orderNumber)
+	orderNumberInt, err := strconv.Atoi(orderNumber)
+	if err != nil {
+		return &serviceErrors.ServiceIllegalOrderNumber{Msg: fmt.Sprintf("illegal order number %s", orderNumber)}
+	}
+	err = proc.storage.AddNewOrder(ctx, userID, orderNumberInt)
 	if err != nil {
 		return err
 	}
 	proc.storage.SendToQueue(modelqueue.OrderQueueEntry{
 		UserID:      userID,
-		OrderNumber: orderNumber,
+		OrderNumber: orderNumberInt,
 		OrderStatus: "NEW",
 	})
 	return nil

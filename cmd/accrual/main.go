@@ -20,7 +20,7 @@ type Response struct {
 }
 
 type Order struct {
-	Order   string  `json:"order,omitempty"`
+	Order   string  `json:"order"`
 	Status  string  `json:"status"`
 	Accrual float64 `json:"accrual,omitempty"`
 }
@@ -141,7 +141,7 @@ func HandleMockAccrualServcie() http.HandlerFunc {
 				Status: "PROCESSING",
 			}
 		}
-		log.Println("responding with status 200")
+		log.Println("responding with status 200", response200)
 		w.WriteHeader(http.StatusOK)
 		resBody, _ := json.Marshal(response200)
 		w.Write(resBody)

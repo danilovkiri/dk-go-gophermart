@@ -9,4 +9,5 @@ type OrderQueueEntry struct {
 	RetryCount  int
 	Accrual     float64
 	LastChecked time.Time
+	RetryAfter  time.Duration
 }

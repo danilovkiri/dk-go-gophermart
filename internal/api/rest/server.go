@@ -3,6 +3,7 @@ package rest
 
 import (
 	"context"
+	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/client"
 	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/handlers"
 	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/middleware"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
@@ -40,8 +41,11 @@ func InitServer(ctx context.Context, cfg *config.Config, log *zerolog.Logger, wg
 		return nil, err
 	}
 
+	// initialize accrual client
+	brokerClient := client.InitClient(cfg.ServerConfig, log)
+
 	// initialize broker
-	brokerService := broker.InitBroker(ctx, storage.QueueIn, storage.QueueOut, log, wg)
+	brokerService := broker.InitBroker(ctx, storage.QueueIn, storage.QueueOut, log, wg, brokerClient, cfg.QueueConfig.WorkerNumber)
 	brokerService.ListenAndProcess()
 
 	urlHandler, err := handlers.InitHandlers(mainService, cfg.ServerConfig, log)

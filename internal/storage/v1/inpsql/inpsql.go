@@ -82,7 +82,9 @@ func InitStorage(ctx context.Context, cfg *config.StorageConfig, log *zerolog.Lo
 		defer wg.Done()
 		for record := range st.QueueOut {
 			err := st.updateOrder(ctx, record.OrderNumber, record.OrderStatus, record.Accrual, record.UserID)
-			log.Warn().Err(err).Msg(fmt.Sprintf("could not update order %v", record.OrderNumber))
+			if err != nil {
+				log.Warn().Err(err).Msg(fmt.Sprintf("could not update order %v", record.OrderNumber))
+			}
 		}
 		log.Info().Msg("stopped listening to queue for processed orders")
 	}()
@@ -394,14 +396,14 @@ func (s *Storage) AddNewWithdrawal(ctx context.Context, userID string, withdrawa
 		_, err = txNewOrderStmt.ExecContext(ctx, userID, withdrawal.OrderNumber, "PROCESSED", 0.0, time.Now().Format(time.RFC3339))
 		if err != nil {
 			if err, ok := err.(*pgconn.PgError); ok && err.Code == pgerrcode.UniqueViolation {
-				chanEr <- &storageErrors.AlreadyExistsError{Err: err, ID: strconv.Itoa(withdrawal.OrderNumber)}
+				chanEr <- &storageErrors.AlreadyExistsError{Err: err, ID: withdrawal.OrderNumber}
 			}
 			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
 		}
 		_, err = txNewWithdrawalStmt.ExecContext(ctx, userID, withdrawal.OrderNumber, withdrawal.Amount, time.Now().Format(time.RFC3339))
 		if err != nil {
 			if err, ok := err.(*pgconn.PgError); ok && err.Code == pgerrcode.UniqueViolation {
-				chanEr <- &storageErrors.AlreadyExistsError{Err: err, ID: strconv.Itoa(withdrawal.OrderNumber)}
+				chanEr <- &storageErrors.AlreadyExistsError{Err: err, ID: withdrawal.OrderNumber}
 			}
 			chanEr <- &storageErrors.ExecutionPSQLError{Err: err}
 		}

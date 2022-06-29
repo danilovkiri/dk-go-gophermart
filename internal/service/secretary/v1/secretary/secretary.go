@@ -63,7 +63,7 @@ func (s *Secretary) NewCookie() (*http.Cookie, string) {
 		Name:    "userID",
 		Value:   token,
 		Path:    "/",
-		Expires: time.Now().Add(10 * time.Minute),
+		Expires: time.Now().Add(30 * time.Minute),
 		//Expires: time.Now().Add(30 * time.Second),
 	}
 	return newCookie, userID
@@ -76,7 +76,7 @@ func (s *Secretary) GetCookieForUser(userID string) *http.Cookie {
 		Name:    "userID",
 		Value:   token,
 		Path:    "/",
-		Expires: time.Now().Add(10 * time.Minute),
+		Expires: time.Now().Add(30 * time.Minute),
 		//Expires: time.Now().Add(30 * time.Second),
 	}
 	return userCookie

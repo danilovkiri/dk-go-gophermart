@@ -6,6 +6,7 @@ require (
 	github.com/ShiraazMoollatjie/goluhn v0.0.0-20211017190329-0d86158c056a
 	github.com/caarlos0/env/v6 v6.9.3
 	github.com/go-chi/chi v4.1.2+incompatible
+	github.com/go-resty/resty/v2 v2.7.0
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgconn v1.12.1
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
@@ -23,5 +24,6 @@ require (
 	github.com/jackc/pgtype v1.11.0 // indirect
 	github.com/stretchr/testify v1.7.1 // indirect
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect
+	golang.org/x/net v0.0.0-20211029224645-99673261e6eb // indirect
 	golang.org/x/text v0.3.7 // indirect
 )
