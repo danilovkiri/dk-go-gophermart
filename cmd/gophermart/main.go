@@ -15,7 +15,6 @@ import (
 
 func main() {
 	wg := &sync.WaitGroup{}
-
 	log := logger.InitLog()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -54,6 +53,8 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal().Err(err).Msg("")
 	}
+
+	// wait for wg completion
 	wg.Wait()
 	log.Info().Msg("server shutdown succeeded")
 }

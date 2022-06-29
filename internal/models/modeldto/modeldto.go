@@ -1,3 +1,5 @@
+// Package modeldto provides types for data transfer objects.
+
 package modeldto
 
 type (

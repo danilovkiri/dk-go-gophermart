@@ -1,3 +1,5 @@
+// Package modelstorage provides types for querying relational DB.
+
 package modelstorage
 
 type UserStorageEntry struct {

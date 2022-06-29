@@ -1,4 +1,4 @@
-// Package rest provides functionality for initializing a server
+// Package rest provides functionality for initializing a server.
 package rest
 
 import (
@@ -34,6 +34,9 @@ func InitServer(ctx context.Context, cfg *config.Config, log *zerolog.Logger, wg
 
 	// initialize storage
 	storage, err := inpsql.InitStorage(ctx, cfg.StorageConfig, log, wg)
+	if err != nil {
+		return nil, err
+	}
 
 	// initialize main service
 	mainService, err := processor.InitService(storage, secretaryService)
@@ -45,20 +48,22 @@ func InitServer(ctx context.Context, cfg *config.Config, log *zerolog.Logger, wg
 	brokerClient := client.InitClient(cfg.ServerConfig, log)
 
 	// initialize broker
-	brokerService := broker.InitBroker(ctx, storage.QueueIn, storage.QueueOut, log, wg, brokerClient, cfg.QueueConfig.WorkerNumber)
+	brokerService := broker.InitBroker(ctx, storage.QueueIn, storage.QueueOut, log, wg, brokerClient, cfg.QueueConfig.WorkerNumber, cfg.QueueConfig.RetryNumber)
 	brokerService.ListenAndProcess()
 
+	// initialize handlers
 	urlHandler, err := handlers.InitHandlers(mainService, cfg.ServerConfig, log)
 	if err != nil {
 		return nil, err
 	}
 
+	// initialize server and set routing
 	r := chi.NewRouter()
 	r.Use(middleware.CompressHandle)
 	r.Use(middleware.DecompressHandle)
 	loginGroup := r.Group(nil)
 	mainGroup := r.Group(nil)
-	mainGroup.Use(cookieHandler.CookieHandle)
+	mainGroup.Use(cookieHandler.CookieHandle) // authentication via cookie is not used for login.register routes
 	loginGroup.Post("/api/user/register", urlHandler.HandleRegister())
 	loginGroup.Post("/api/user/login", urlHandler.HandleLogin())
 	mainGroup.Post("/api/user/orders", urlHandler.HandleNewOrder())

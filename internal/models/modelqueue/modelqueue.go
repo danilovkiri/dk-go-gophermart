@@ -1,3 +1,5 @@
+// Package modelqueue provides types for queueing pieces of data.
+
 package modelqueue
 
 import "time"

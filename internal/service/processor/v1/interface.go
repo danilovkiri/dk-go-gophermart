@@ -1,3 +1,5 @@
+// Package processor provides intermediary layer functionality between the DB and API endpoint handlers.
+
 package processor
 
 import (
@@ -6,6 +8,7 @@ import (
 	"net/http"
 )
 
+// Processor defines a set of methods for types implementing Processor.
 type Processor interface {
 	AddNewUser(ctx context.Context, credentials modeldto.User) (*http.Cookie, error)
 	LoginUser(ctx context.Context, credentials modeldto.User) (*http.Cookie, error)

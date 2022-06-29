@@ -1,3 +1,5 @@
+// Package logger provides logging functionality.
+
 package logger
 
 import (
@@ -6,6 +8,7 @@ import (
 	"time"
 )
 
+// InitLog initializes a logger.
 func InitLog() *zerolog.Logger {
 	zerolog.TimeFieldFormat = time.RFC3339
 	Logger := zerolog.New(os.Stderr).With().Timestamp().Logger()

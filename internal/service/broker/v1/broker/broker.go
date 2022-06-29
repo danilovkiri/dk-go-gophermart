@@ -1,3 +1,5 @@
+// Package broker provides parallelization and queueing functionality for data processing.
+
 package broker
 
 import (
@@ -15,6 +17,7 @@ import (
 	"time"
 )
 
+// Broker defines attributes of a struct available to its methods.
 type Broker struct {
 	ctx           context.Context
 	log           *zerolog.Logger
@@ -23,8 +26,10 @@ type Broker struct {
 	wg            *sync.WaitGroup
 	accrualClient *client.Client
 	workerNumber  int
+	retryNumber   int
 }
 
+// GetAccrualWorker defines attributes of a struct available to its methods.
 type GetAccrualWorker struct {
 	ID            int
 	ctx           context.Context
@@ -32,9 +37,11 @@ type GetAccrualWorker struct {
 	queueIn       chan modelqueue.OrderQueueEntry
 	queueOut      chan modelqueue.OrderQueueEntry
 	accrualClient *client.Client
+	retryNumber   int
 }
 
-func InitBroker(ctx context.Context, queueIn chan modelqueue.OrderQueueEntry, queueOut chan modelqueue.OrderQueueEntry, log *zerolog.Logger, wg *sync.WaitGroup, accrualClient *client.Client, nWorkers int) *Broker {
+// InitBroker initializes a queue management service.
+func InitBroker(ctx context.Context, queueIn chan modelqueue.OrderQueueEntry, queueOut chan modelqueue.OrderQueueEntry, log *zerolog.Logger, wg *sync.WaitGroup, accrualClient *client.Client, nWorkers int, nRetries int) *Broker {
 	broker := Broker{
 		ctx:           ctx,
 		log:           log,
@@ -43,10 +50,12 @@ func InitBroker(ctx context.Context, queueIn chan modelqueue.OrderQueueEntry, qu
 		wg:            wg,
 		accrualClient: accrualClient,
 		workerNumber:  nWorkers,
+		retryNumber:   nRetries,
 	}
 	return &broker
 }
 
+// ListenAndProcess starts queue management and defines its logic.
 func (b *Broker) ListenAndProcess() {
 	b.wg.Add(1)
 	go func() {
@@ -54,7 +63,7 @@ func (b *Broker) ListenAndProcess() {
 		defer b.wg.Done()
 		g, _ := errgroup.WithContext(b.ctx)
 		for i := 0; i < b.workerNumber+1; i++ {
-			w := &GetAccrualWorker{ID: i, ctx: b.ctx, queueIn: b.queueIn, queueOut: b.queueOut, log: b.log, accrualClient: b.accrualClient}
+			w := &GetAccrualWorker{ID: i, ctx: b.ctx, queueIn: b.queueIn, queueOut: b.queueOut, log: b.log, accrualClient: b.accrualClient, retryNumber: b.retryNumber}
 			g.Go(w.processAsync)
 		}
 		<-b.ctx.Done()
@@ -70,6 +79,7 @@ func (b *Broker) ListenAndProcess() {
 	}()
 }
 
+// processAsync processes data from queue and manages its usage.
 func (w *GetAccrualWorker) processAsync() error {
 	for record := range w.queueIn {
 		// check retry-after timeout, if nonzero and not finished - put back to queue
@@ -80,7 +90,7 @@ func (w *GetAccrualWorker) processAsync() error {
 
 		// wait for at least 10 seconds before querying the same order again
 		// stop waiting upon ctx.Done()
-		for time.Now().Sub(record.LastChecked) < 10*time.Second {
+		for time.Since(record.LastChecked) < 10*time.Second {
 			select {
 			case <-w.ctx.Done():
 				return nil
@@ -98,7 +108,7 @@ func (w *GetAccrualWorker) processAsync() error {
 		}
 		resp, err := w.accrualClient.GetAccrual(w.ctx, record.OrderNumber)
 		if err != nil || (resp != nil && (resp.StatusCode() != 429 && resp.StatusCode() != 200)) {
-			if record.RetryCount >= 3 {
+			if record.RetryCount >= w.retryNumber {
 				// abandon processing if 3 retries were unsuccessfully performed
 				w.log.Warn().Msg(fmt.Sprintf("WID %v, order %v — abandonment due to retry limit exceeding", w.ID, record.OrderNumber))
 				finalRecord := modelqueue.OrderQueueEntry{

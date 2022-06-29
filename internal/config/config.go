@@ -18,6 +18,7 @@ type Config struct {
 // QueueConfig defines default parallelization parameters for queue.
 type QueueConfig struct {
 	WorkerNumber int `env:"N_WORKERS"`
+	RetryNumber  int `env:"N_RETRIES" envDefault:"5"`
 }
 
 // ServerConfig defines default server-relates constants and parameters and overwrites them with environment variables.

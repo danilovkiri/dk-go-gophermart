@@ -1,3 +1,5 @@
+// Package processor provides intermediary layer functionality between the DB and API endpoint handlers.
+
 package processor
 
 import (
@@ -15,11 +17,13 @@ import (
 	"time"
 )
 
+// Processor defines attributes of a struct available to its methods.
 type Processor struct {
 	storage   storage.Storage
 	secretary secretary.Secretary
 }
 
+// InitService initializes an intermediary service for data processing.
 func InitService(st storage.Storage, sec secretary.Secretary) (*Processor, error) {
 	if st == nil {
 		return nil, &serviceErrors.ServiceFoundNilArgument{Msg: "nil storage was passed to service initializer"}
@@ -34,6 +38,7 @@ func InitService(st storage.Storage, sec secretary.Secretary) (*Processor, error
 	return processor, nil
 }
 
+// AddNewUser processes user register requests.
 func (proc *Processor) AddNewUser(ctx context.Context, credentials modeldto.User) (*http.Cookie, error) {
 	newCookie, userID := proc.secretary.NewCookie()
 	cipheredCredentials := modeldto.User{
@@ -47,6 +52,7 @@ func (proc *Processor) AddNewUser(ctx context.Context, credentials modeldto.User
 	return newCookie, nil
 }
 
+// LoginUser processes user login requests.
 func (proc *Processor) LoginUser(ctx context.Context, credentials modeldto.User) (*http.Cookie, error) {
 	cipheredCredentials := modeldto.User{
 		Login:    proc.secretary.Encode(credentials.Login),
@@ -60,6 +66,7 @@ func (proc *Processor) LoginUser(ctx context.Context, credentials modeldto.User)
 	return userCookie, nil
 }
 
+// GetBalance processes balance query requests.
 func (proc *Processor) GetBalance(ctx context.Context, cipheredUserID string) (*modeldto.Balance, error) {
 	userID, err := proc.secretary.Decode(cipheredUserID)
 	if err != nil {
@@ -80,6 +87,7 @@ func (proc *Processor) GetBalance(ctx context.Context, cipheredUserID string) (*
 	return &balance, nil
 }
 
+// GetWithdrawals processes withdrawals query requests.
 func (proc *Processor) GetWithdrawals(ctx context.Context, cipheredUserID string) ([]modeldto.Withdrawal, error) {
 	userID, err := proc.secretary.Decode(cipheredUserID)
 	if err != nil {
@@ -106,6 +114,7 @@ func (proc *Processor) GetWithdrawals(ctx context.Context, cipheredUserID string
 	return responseWithdrawals, nil
 }
 
+// GetOrders processes orders query requests.
 func (proc *Processor) GetOrders(ctx context.Context, cipheredUserID string) ([]modeldto.Order, error) {
 	userID, err := proc.secretary.Decode(cipheredUserID)
 	if err != nil {
@@ -133,6 +142,7 @@ func (proc *Processor) GetOrders(ctx context.Context, cipheredUserID string) ([]
 	return responseOrders, nil
 }
 
+// AddNewWithdrawal processes new withdrawal requests.
 func (proc *Processor) AddNewWithdrawal(ctx context.Context, cipheredUserID string, withdrawal modeldto.NewOrderWithdrawal) error {
 	userID, err := proc.secretary.Decode(cipheredUserID)
 	if err != nil {
@@ -156,6 +166,7 @@ func (proc *Processor) AddNewWithdrawal(ctx context.Context, cipheredUserID stri
 	return nil
 }
 
+// AddNewOrder processes new order requests.
 func (proc *Processor) AddNewOrder(ctx context.Context, cipheredUserID, orderNumber string) error {
 	userID, err := proc.secretary.Decode(cipheredUserID)
 	if err != nil {

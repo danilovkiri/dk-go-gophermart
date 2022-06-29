@@ -1,3 +1,5 @@
+// Package inpsql provides functionality for operating a relational DB.
+
 package inpsql
 
 import (
@@ -21,6 +23,7 @@ import (
 	"time"
 )
 
+// Storage defines attributes of a struct available to its methods.
 type Storage struct {
 	mu       sync.Mutex
 	cfg      *config.StorageConfig
@@ -30,12 +33,13 @@ type Storage struct {
 	QueueOut chan modelqueue.OrderQueueEntry
 }
 
+// InitStorage initializes a storage handling service.
 func InitStorage(ctx context.Context, cfg *config.StorageConfig, log *zerolog.Logger, wg *sync.WaitGroup) (*Storage, error) {
 	db, err := sql.Open("pgx", cfg.DatabaseDSN)
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not prepare a DB connection")
 	}
-	// initialize a Storage
+	// initialize a storage
 	queueIn := make(chan modelqueue.OrderQueueEntry)
 	queueOut := make(chan modelqueue.OrderQueueEntry)
 	st := Storage{
@@ -91,6 +95,7 @@ func InitStorage(ctx context.Context, cfg *config.StorageConfig, log *zerolog.Lo
 	return &st, nil
 }
 
+// AddNewUser adds a new user to DB.
 func (s *Storage) AddNewUser(ctx context.Context, credentials modeldto.User, userID string) error {
 	newUserStmt, err := s.DB.PrepareContext(ctx, "INSERT INTO users (user_id, login, password, registered_at) VALUES ($1, $2, $3, $4)")
 	if err != nil {
@@ -141,6 +146,7 @@ func (s *Storage) AddNewUser(ctx context.Context, credentials modeldto.User, use
 	}
 }
 
+// CheckUser checks whether a user exists in DB.
 func (s *Storage) CheckUser(ctx context.Context, credentials modeldto.User) (string, error) {
 	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM users WHERE login = $1")
 	if err != nil {
@@ -175,17 +181,18 @@ func (s *Storage) CheckUser(ctx context.Context, credentials modeldto.User) (str
 
 	select {
 	case <-ctx.Done():
-		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("user authentication failed"))
+		s.log.Error().Err(ctx.Err()).Msg("user authentication failed")
 		return "", &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
 	case methodErr := <-chanEr:
-		s.log.Error().Err(methodErr).Msg(fmt.Sprint("user authentication failed"))
+		s.log.Error().Err(methodErr).Msg("user authentication failed")
 		return "", methodErr
 	case userID := <-chanOk:
-		s.log.Info().Msg(fmt.Sprint("user authentication done"))
+		s.log.Info().Msg("user authentication done")
 		return userID, nil
 	}
 }
 
+// GetCurrentAmount retrieves the current user's balance from DB.
 func (s *Storage) GetCurrentAmount(ctx context.Context, userID string) (float64, error) {
 	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM balance WHERE user_id = $1")
 	if err != nil {
@@ -213,17 +220,18 @@ func (s *Storage) GetCurrentAmount(ctx context.Context, userID string) (float64,
 	}()
 	select {
 	case <-ctx.Done():
-		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting current balance failed"))
+		s.log.Error().Err(ctx.Err()).Msg("getting current balance failed")
 		return 0, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
 	case methodErr := <-chanEr:
-		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting current balance failed"))
+		s.log.Error().Err(methodErr).Msg("getting current balance failed")
 		return 0, methodErr
 	case amount := <-chanOk:
-		s.log.Info().Msg(fmt.Sprint("getting current balance done"))
+		s.log.Info().Msg("getting current balance done")
 		return amount, nil
 	}
 }
 
+// GetWithdrawnAmount retrieves the current user's withdrawn balance from DB.
 func (s *Storage) GetWithdrawnAmount(ctx context.Context, userID string) (float64, error) {
 	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM withdrawals WHERE user_id = $1")
 	if err != nil {
@@ -263,17 +271,18 @@ func (s *Storage) GetWithdrawnAmount(ctx context.Context, userID string) (float6
 	}()
 	select {
 	case <-ctx.Done():
-		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting withdrawn balance failed"))
+		s.log.Error().Err(ctx.Err()).Msg("getting withdrawn balance failed")
 		return 0, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
 	case methodErr := <-chanEr:
-		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting withdrawn balance failed"))
+		s.log.Error().Err(methodErr).Msg("getting withdrawn balance failed")
 		return 0, methodErr
 	case amount := <-chanOk:
-		s.log.Info().Msg(fmt.Sprint("getting withdrawn balance done"))
+		s.log.Info().Msg("getting withdrawn balance done")
 		return amount, nil
 	}
 }
 
+// GetWithdrawals retrieves a user's history of withdrawals from DB.
 func (s *Storage) GetWithdrawals(ctx context.Context, userID string) ([]modelstorage.WithdrawalStorageEntry, error) {
 	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM withdrawals WHERE user_id = $1")
 	if err != nil {
@@ -309,17 +318,18 @@ func (s *Storage) GetWithdrawals(ctx context.Context, userID string) ([]modelsto
 	}()
 	select {
 	case <-ctx.Done():
-		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting withdrawals failed"))
+		s.log.Error().Err(ctx.Err()).Msg("getting withdrawals failed")
 		return nil, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
 	case methodErr := <-chanEr:
-		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting withdrawals failed"))
+		s.log.Error().Err(methodErr).Msg("getting withdrawals failed")
 		return nil, methodErr
 	case query := <-chanOk:
-		s.log.Info().Msg(fmt.Sprint("getting withdrawals done"))
+		s.log.Info().Msg("getting withdrawals done")
 		return query, nil
 	}
 }
 
+// GetOrders retrieves a user's history of orders from DB.
 func (s *Storage) GetOrders(ctx context.Context, userID string) ([]modelstorage.OrderStorageEntry, error) {
 	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM orders WHERE user_id = $1")
 	if err != nil {
@@ -355,17 +365,18 @@ func (s *Storage) GetOrders(ctx context.Context, userID string) ([]modelstorage.
 	}()
 	select {
 	case <-ctx.Done():
-		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting orders failed"))
+		s.log.Error().Err(ctx.Err()).Msg("getting orders failed")
 		return nil, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
 	case methodErr := <-chanEr:
-		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting orders failed"))
+		s.log.Error().Err(methodErr).Msg("getting orders failed")
 		return nil, methodErr
 	case query := <-chanOk:
-		s.log.Info().Msg(fmt.Sprint("getting orders done"))
+		s.log.Info().Msg("getting orders done")
 		return query, nil
 	}
 }
 
+// AddNewWithdrawal adds a new withdrawal event to DB.
 func (s *Storage) AddNewWithdrawal(ctx context.Context, userID string, withdrawal modeldto.NewOrderWithdrawal) error {
 	newOrderStmt, err := s.DB.PrepareContext(ctx, "INSERT INTO orders (user_id, order_number, status, accrual, created_at) VALUES ($1, $2, $3, $4, $5)")
 	if err != nil {
@@ -415,21 +426,23 @@ func (s *Storage) AddNewWithdrawal(ctx context.Context, userID string, withdrawa
 	}()
 	select {
 	case <-ctx.Done():
-		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("processing new withdrawal order failed"))
+		s.log.Error().Err(ctx.Err()).Msg("processing new withdrawal order failed")
 		return &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
 	case methodErr := <-chanEr:
-		s.log.Error().Err(methodErr).Msg(fmt.Sprint("processing new withdrawal order failed"))
+		s.log.Error().Err(methodErr).Msg("processing new withdrawal order failed")
 		return methodErr
 	case <-chanOk:
-		s.log.Info().Msg(fmt.Sprint("processing new withdrawal order done"))
+		s.log.Info().Msg("processing new withdrawal order done")
 		return tx.Commit()
 	}
 }
 
+// SendToQueue sends an order to processing queue.
 func (s *Storage) SendToQueue(item modelqueue.OrderQueueEntry) {
 	s.QueueIn <- item
 }
 
+// AddNewOrder adds a new order event to DB.
 func (s *Storage) AddNewOrder(ctx context.Context, userID string, orderNumber int) error {
 	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM orders WHERE order_number = $1")
 	if err != nil {
@@ -477,6 +490,7 @@ func (s *Storage) AddNewOrder(ctx context.Context, userID string, orderNumber in
 	}
 }
 
+// getStalledOrders retrieves all unprocessed orders from DB upon server startup and sends them to queue for processing.
 func (s *Storage) getStalledOrders(ctx context.Context) ([]modelstorage.OrderStorageEntry, error) {
 	selectStmt, err := s.DB.PrepareContext(ctx, "SELECT * FROM orders WHERE status NOT IN ('PROCESSED', 'INVALID')")
 	if err != nil {
@@ -512,17 +526,18 @@ func (s *Storage) getStalledOrders(ctx context.Context) ([]modelstorage.OrderSto
 	}()
 	select {
 	case <-ctx.Done():
-		s.log.Error().Err(ctx.Err()).Msg(fmt.Sprint("getting stalled orders failed"))
+		s.log.Error().Err(ctx.Err()).Msg("getting stalled orders failed")
 		return nil, &storageErrors.ContextTimeoutExceededError{Err: ctx.Err()}
 	case methodErr := <-chanEr:
-		s.log.Error().Err(methodErr).Msg(fmt.Sprint("getting stalled orders failed"))
+		s.log.Error().Err(methodErr).Msg("getting stalled orders failed")
 		return nil, methodErr
 	case query := <-chanOk:
-		s.log.Info().Msg(fmt.Sprint("getting stalled orders done"))
+		s.log.Info().Msg("getting stalled orders done")
 		return query, nil
 	}
 }
 
+// updateOrder updates order entry in DB.
 func (s *Storage) updateOrder(ctx context.Context, orderNumber int, status string, accrual float64, userID string) error {
 	updOrderStmt, err := s.DB.PrepareContext(ctx, "UPDATE orders SET status = $1, accrual = $2 WHERE order_number = $3")
 	if err != nil {
@@ -570,6 +585,7 @@ func (s *Storage) updateOrder(ctx context.Context, orderNumber int, status strin
 	}
 }
 
+// createTables creates DB tables if not exist.
 func (s *Storage) createTables(ctx context.Context) error {
 	var queries []string
 	query := `CREATE TABLE IF NOT EXISTS users (

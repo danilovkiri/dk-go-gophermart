@@ -1,3 +1,5 @@
+// Package handlers provides API endpoint handling functionality.
+
 package handlers
 
 import (
@@ -18,12 +20,14 @@ import (
 	"time"
 )
 
+// Handler defines attributes of a struct available to its methods.
 type Handler struct {
 	service      processor.Processor
 	serverConfig *config.ServerConfig
 	log          *zerolog.Logger
 }
 
+// InitHandlers initializes a handler object.
 func InitHandlers(mainService processor.Processor, serverConfig *config.ServerConfig, log *zerolog.Logger) (*Handler, error) {
 	if mainService == nil {
 		return nil, &handlersErrors.HandlersFoundNilArgument{Msg: "nil processor was passed to handlers initializer"}
@@ -31,6 +35,7 @@ func InitHandlers(mainService processor.Processor, serverConfig *config.ServerCo
 	return &Handler{service: mainService, serverConfig: serverConfig, log: log}, nil
 }
 
+// HandleRegister processes user register requests.
 func (h *Handler) HandleRegister() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
@@ -53,8 +58,8 @@ func (h *Handler) HandleRegister() http.HandlerFunc {
 		}
 		h.log.Info().Msg(fmt.Sprintf("new user register request detected for %s", credentials))
 		if len(credentials.Login) == 0 || len(credentials.Password) == 0 {
-			h.log.Error().Err(err).Msg("HandleRegister failed")
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			h.log.Error().Msg("HandleRegister failed")
+			http.Error(w, "Empty values are not allowed", http.StatusBadRequest)
 			return
 		}
 		userCookie, err := h.service.AddNewUser(ctx, credentials)
@@ -77,6 +82,7 @@ func (h *Handler) HandleRegister() http.HandlerFunc {
 	}
 }
 
+// HandleLogin processes user login requests.
 func (h *Handler) HandleLogin() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
@@ -123,6 +129,7 @@ func (h *Handler) HandleLogin() http.HandlerFunc {
 	}
 }
 
+// HandleGetBalance processes balance query requests.
 func (h *Handler) HandleGetBalance() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
@@ -155,6 +162,7 @@ func (h *Handler) HandleGetBalance() http.HandlerFunc {
 	}
 }
 
+// HandleGetWithdrawals processes withdrawals query requests.
 func (h *Handler) HandleGetWithdrawals() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
@@ -191,6 +199,7 @@ func (h *Handler) HandleGetWithdrawals() http.HandlerFunc {
 	}
 }
 
+// HandleGetOrders processes orders query requests.
 func (h *Handler) HandleGetOrders() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
@@ -227,6 +236,7 @@ func (h *Handler) HandleGetOrders() http.HandlerFunc {
 	}
 }
 
+// HandleNewWithdrawal processes new withdrawal requests.
 func (h *Handler) HandleNewWithdrawal() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
@@ -276,6 +286,7 @@ func (h *Handler) HandleNewWithdrawal() http.HandlerFunc {
 	}
 }
 
+// HandleNewOrder processes new order requests.
 func (h *Handler) HandleNewOrder() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
@@ -321,6 +332,7 @@ func (h *Handler) HandleNewOrder() http.HandlerFunc {
 	}
 }
 
+// getUserID retrieves user identifier from the request metadata.
 func getUserID(r *http.Request) (string, error) {
 	userCookie, err := r.Cookie("userID")
 	if err != nil {
