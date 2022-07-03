@@ -5,7 +5,7 @@ import (
 	"flag"
 	"github.com/ShiraazMoollatjie/goluhn"
 	"github.com/caarlos0/env/v6"
-	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/middleware"
+	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v1/middleware"
 	"github.com/go-chi/chi"
 	"log"
 	"math/rand"

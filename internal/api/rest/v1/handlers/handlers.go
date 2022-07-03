@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	handlersErrors "github.com/danilovkiri/dk-go-gophermart/internal/api/rest/errors"
+	handlersErrors "github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v1/errors"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
 	"github.com/danilovkiri/dk-go-gophermart/internal/service/processor/v1"

@@ -6,7 +6,11 @@ import (
 	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
+	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelclaims"
+	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
 	"net/http"
 	"time"
@@ -16,6 +20,7 @@ import (
 type Secretary struct {
 	aesgcm cipher.AEAD
 	nonce  []byte
+	key    []byte
 }
 
 // NewSecretaryService initializes a secretary service with ciphering functionality.
@@ -33,6 +38,7 @@ func NewSecretaryService(c *config.SecretConfig) (*Secretary, error) {
 	return &Secretary{
 		aesgcm: aesgcm,
 		nonce:  nonce,
+		key:    []byte(c.SecretKey),
 	}, nil
 }
 
@@ -64,6 +70,7 @@ func (s *Secretary) NewCookie() (*http.Cookie, string) {
 		Value:   token,
 		Path:    "/",
 		Expires: time.Now().Add(30 * time.Minute),
+		//Expires: time.Now().Add(30 * time.Second),
 	}
 	return newCookie, userID
 }
@@ -76,7 +83,49 @@ func (s *Secretary) GetCookieForUser(userID string) *http.Cookie {
 		Value:   token,
 		Path:    "/",
 		Expires: time.Now().Add(30 * time.Minute),
-		//Expires: time.Now().Add(30 * time.Second),
 	}
 	return userCookie
+}
+
+func (s *Secretary) ValidateToken(accessToken string) (string, error) {
+	token, err := jwt.ParseWithClaims(accessToken, &modelclaims.MyCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return s.key, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if claims, ok := token.Claims.(*modelclaims.MyCustomClaims); ok && token.Valid {
+		return claims.UserID, nil
+	}
+	return "", errors.New("invalid access token")
+}
+
+func (s *Secretary) NewToken() (string, string, error) {
+	userID := uuid.New().String()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &modelclaims.MyCustomClaims{
+		UserID: userID,
+		StandardClaims: jwt.StandardClaims{
+			IssuedAt:  time.Now().Unix(),
+			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
+		},
+	})
+	accessToken, err := token.SignedString(s.key)
+	if err != nil {
+		return "", "", err
+	}
+	return accessToken, userID, nil
+}
+
+func (s *Secretary) GetTokenForUser(userID string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &modelclaims.MyCustomClaims{
+		UserID: userID,
+		StandardClaims: jwt.StandardClaims{
+			IssuedAt:  time.Now().Unix(),
+			ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
+		},
+	})
+	return token.SignedString(s.key)
 }

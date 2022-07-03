@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest"
+	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v2"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
 	"github.com/danilovkiri/dk-go-gophermart/internal/logger"
 	"net/http"

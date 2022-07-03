@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v1/client"
+	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v2/client"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelqueue"
 	"github.com/rs/zerolog"
