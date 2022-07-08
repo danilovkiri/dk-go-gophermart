@@ -3,9 +3,13 @@ package rest
 
 import (
 	"context"
-	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v1/client"
+	"net/http"
+	"sync"
+	"time"
+
 	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v1/handlers"
 	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v1/middleware"
+	"github.com/danilovkiri/dk-go-gophermart/internal/client"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
 	"github.com/danilovkiri/dk-go-gophermart/internal/service/broker/v1/broker"
 	"github.com/danilovkiri/dk-go-gophermart/internal/service/processor/v1/processor"
@@ -13,9 +17,6 @@ import (
 	"github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/inpsql"
 	"github.com/go-chi/chi"
 	"github.com/rs/zerolog"
-	"net/http"
-	"sync"
-	"time"
 )
 
 // InitServer returns a http.Server object ready to be listening and serving .
@@ -26,8 +27,8 @@ func InitServer(ctx context.Context, cfg *config.Config, log *zerolog.Logger, wg
 		return nil, err
 	}
 
-	//initialize cookie handler
-	cookieHandler, err := middleware.NewCookieHandler(secretaryService, cfg.SecretConfig)
+	// initialize token handler
+	tokenHandler, err := middleware.NewTokenHandler(secretaryService, cfg.SecretConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +64,7 @@ func InitServer(ctx context.Context, cfg *config.Config, log *zerolog.Logger, wg
 	r.Use(middleware.DecompressHandle)
 	loginGroup := r.Group(nil)
 	mainGroup := r.Group(nil)
-	mainGroup.Use(cookieHandler.CookieHandle) // authentication via cookie is not used for login.register routes
+	mainGroup.Use(tokenHandler.TokenHandle) // authentication via cookie is not used for login.register routes
 	loginGroup.Post("/api/user/register", urlHandler.HandleRegister())
 	loginGroup.Post("/api/user/login", urlHandler.HandleLogin())
 	mainGroup.Post("/api/user/orders", urlHandler.HandleNewOrder())

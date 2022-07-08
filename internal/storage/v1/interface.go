@@ -4,9 +4,10 @@ package storage
 
 import (
 	"context"
+	"github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/modelstorage"
+
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelqueue"
-	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelstorage"
 )
 
 // RegisterLogin defines a set of methods for types implementing RegisterLogin.

@@ -6,15 +6,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v1/client"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/danilovkiri/dk-go-gophermart/internal/client"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelqueue"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
-	"strconv"
-	"sync"
-	"time"
 )
 
 // Broker defines attributes of a struct available to its methods.
@@ -109,8 +110,8 @@ func (w *GetAccrualWorker) processAsync() error {
 		resp, err := w.accrualClient.GetAccrual(w.ctx, record.OrderNumber)
 		if err != nil || (resp != nil && (resp.StatusCode() != 429 && resp.StatusCode() != 200)) {
 			if record.RetryCount >= w.retryNumber {
-				// abandon processing if 3 retries were unsuccessfully performed
-				w.log.Warn().Msg(fmt.Sprintf("WID %v, order %v — abandonment due to retry limit exceeding", w.ID, record.OrderNumber))
+				// abandon processing if w.retryNumber retries were unsuccessfully performed
+				w.log.Warn().Msg(fmt.Sprintf("WID %v, order %v — abandoning due to retry limit exceeding", w.ID, record.OrderNumber))
 				finalRecord := modelqueue.OrderQueueEntry{
 					UserID:      record.UserID,
 					OrderNumber: record.OrderNumber,

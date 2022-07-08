@@ -4,7 +4,7 @@ package middleware
 import (
 	"errors"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
-	"github.com/danilovkiri/dk-go-gophermart/internal/service/secretary/v2"
+	"github.com/danilovkiri/dk-go-gophermart/internal/service/secretary/v1"
 	"net/http"
 	"strings"
 )

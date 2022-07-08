@@ -4,11 +4,12 @@ package client
 import (
 	"context"
 	"fmt"
+	"strconv"
+
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
 	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"strconv"
 )
 
 // Client defines attributes of a struct available to its methods.

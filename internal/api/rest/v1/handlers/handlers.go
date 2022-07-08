@@ -4,10 +4,14 @@ package handlers
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strings"
+	"time"
+
 	handlersErrors "github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v1/errors"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
@@ -15,9 +19,6 @@ import (
 	serviceErrors "github.com/danilovkiri/dk-go-gophermart/internal/service/processor/v1/errors"
 	storageErrors "github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/errors"
 	"github.com/rs/zerolog"
-	"io/ioutil"
-	"net/http"
-	"time"
 )
 
 // Handler defines attributes of a struct available to its methods.
@@ -62,7 +63,7 @@ func (h *Handler) HandleRegister() http.HandlerFunc {
 			http.Error(w, "Empty values are not allowed", http.StatusBadRequest)
 			return
 		}
-		userCookie, err := h.service.AddNewUser(ctx, credentials)
+		accessToken, err := h.service.AddNewUser(ctx, credentials)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleRegister failed")
 			var contextTimeoutExceededError *storageErrors.ContextTimeoutExceededError
@@ -76,8 +77,7 @@ func (h *Handler) HandleRegister() http.HandlerFunc {
 			}
 			return
 		}
-		http.SetCookie(w, userCookie)
-		r.AddCookie(userCookie)
+		w.Header().Set("Authorization", "Bearer "+accessToken)
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -109,7 +109,7 @@ func (h *Handler) HandleLogin() http.HandlerFunc {
 			http.Error(w, "Empty values are not allowed", http.StatusBadRequest)
 			return
 		}
-		userCookie, err := h.service.LoginUser(ctx, credentials)
+		accessToken, err := h.service.LoginUser(ctx, credentials)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleLogin failed")
 			var contextTimeoutExceededError *storageErrors.ContextTimeoutExceededError
@@ -123,8 +123,7 @@ func (h *Handler) HandleLogin() http.HandlerFunc {
 			}
 			return
 		}
-		http.SetCookie(w, userCookie)
-		r.AddCookie(userCookie)
+		w.Header().Set("Authorization", "Bearer "+accessToken)
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -134,13 +133,13 @@ func (h *Handler) HandleGetBalance() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
-		cipheredUserID, err := getUserID(r)
+		userID, err := h.getUserID(r)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleBalance failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		balance, err := h.service.GetBalance(ctx, cipheredUserID)
+		balance, err := h.service.GetBalance(ctx, userID)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleBalance failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -167,13 +166,13 @@ func (h *Handler) HandleGetWithdrawals() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
-		cipheredUserID, err := getUserID(r)
+		userID, err := h.getUserID(r)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleWithdrawals failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		withdrawals, err := h.service.GetWithdrawals(ctx, cipheredUserID)
+		withdrawals, err := h.service.GetWithdrawals(ctx, userID)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleBalance failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -204,13 +203,13 @@ func (h *Handler) HandleGetOrders() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
-		cipheredUserID, err := getUserID(r)
+		userID, err := h.getUserID(r)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleGetOrders failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		orders, err := h.service.GetOrders(ctx, cipheredUserID)
+		orders, err := h.service.GetOrders(ctx, userID)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleGetOrders failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -241,7 +240,7 @@ func (h *Handler) HandleNewWithdrawal() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
-		cipheredUserID, err := getUserID(r)
+		userID, err := h.getUserID(r)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleGetOrders failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -264,7 +263,7 @@ func (h *Handler) HandleNewWithdrawal() http.HandlerFunc {
 			return
 		}
 		h.log.Info().Msg(fmt.Sprintf("new withdrawal request detected for %v", newOrderWithdrawal))
-		err = h.service.AddNewWithdrawal(ctx, cipheredUserID, newOrderWithdrawal)
+		err = h.service.AddNewWithdrawal(ctx, userID, newOrderWithdrawal)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleNewWithdrawal failed")
 			var contextTimeoutExceededError *storageErrors.ContextTimeoutExceededError
@@ -291,7 +290,7 @@ func (h *Handler) HandleNewOrder() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
-		cipheredUserID, err := getUserID(r)
+		userID, err := h.getUserID(r)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleNewOrder failed")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -308,7 +307,7 @@ func (h *Handler) HandleNewOrder() http.HandlerFunc {
 		}
 		orderNumber := string(b)
 		h.log.Info().Msg(fmt.Sprintf("new order request detected for order %s", orderNumber))
-		err = h.service.AddNewOrder(ctx, cipheredUserID, orderNumber)
+		err = h.service.AddNewOrder(ctx, userID, orderNumber)
 		if err != nil {
 			h.log.Error().Err(err).Msg("HandleNewWithdrawal failed")
 			var contextTimeoutExceededError *storageErrors.ContextTimeoutExceededError
@@ -333,16 +332,15 @@ func (h *Handler) HandleNewOrder() http.HandlerFunc {
 }
 
 // getUserID retrieves user identifier from the request metadata.
-func getUserID(r *http.Request) (string, error) {
-	userCookie, err := r.Cookie("userID")
+func (h *Handler) getUserID(r *http.Request) (string, error) {
+	accessToken := r.Header.Get("Authorization")
+	if len(accessToken) == 0 {
+		return "", errors.New("token authorization required")
+	}
+	accessToken = strings.Replace(accessToken, "Bearer ", "", 1)
+	userID, err := h.service.GetUserID(accessToken)
 	if err != nil {
 		return "", err
 	}
-	token := userCookie.Value
-	data, err := hex.DecodeString(token)
-	if err != nil {
-		return "", err
-	}
-	userID := data
-	return hex.EncodeToString(userID), nil
+	return userID, nil
 }

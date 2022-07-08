@@ -9,18 +9,19 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"sync"
+	"time"
+
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modeldto"
 	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelqueue"
-	"github.com/danilovkiri/dk-go-gophermart/internal/models/modelstorage"
 	storageErrors "github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/errors"
+	"github.com/danilovkiri/dk-go-gophermart/internal/storage/v1/modelstorage"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/rs/zerolog"
-	"strconv"
-	"sync"
-	"time"
 )
 
 // Storage defines attributes of a struct available to its methods.

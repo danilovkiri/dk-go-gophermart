@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v2"
+	"github.com/danilovkiri/dk-go-gophermart/internal/api/rest/v1"
 	"github.com/danilovkiri/dk-go-gophermart/internal/config"
 	"github.com/danilovkiri/dk-go-gophermart/internal/logger"
 	"net/http"
@@ -35,9 +35,9 @@ func main() {
 	// set a listener for graceful shutdown
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	wg.Add(1)
+	//wg.Add(1)
 	go func() {
-		defer wg.Done()
+		//defer wg.Done()
 		<-done
 		log.Info().Msg("server shutdown attempted")
 		ctxTO, cancelTO := context.WithTimeout(ctx, 5*time.Second)
